@@ -162,6 +162,8 @@ aiyu/
 │   │   ├── article.js         # 選取文字翻譯的浮動視窗 UI
 │   │   ├── article.css
 │   │   └── youtube.js         # YT 字幕 overlay + 逐字稿面板 + SRT 匯出
+│   ├── shared/
+│   │   └── models.js          # 模型清單／預設（單一來源；sw / popup / options 共用）
 │   ├── popup/                 # 工具列 popup
 │   ├── options/               # 詞庫與進階設定
 │   └── icons/
