@@ -243,7 +243,9 @@ async function getSelectionText(tabId, frameId, fallback) {
 async function ensureContentScripts(tab) {
   if (!tab?.id) return false;
   const url = tab.url || "";
-  if (!/^https?:\/\//.test(url)) return false; // chrome:// 等受限頁面無法注入
+  // file:// 也放行(本機 PDF)；注意 file:// 需在 chrome://extensions 開「允許存取檔案網址」，
+  // 否則 executeScript 會擲錯。chrome://、PDF 檢視器自身的 chrome-extension:// 框架仍無法注入。
+  if (!/^(https?|file):\/\//.test(url)) return false;
   const isYouTube = /^https?:\/\/[^/]*\.?youtube\.com\//.test(url);
   const files = isYouTube
     ? ["content/youtube.js", "content/article.js"]
@@ -260,26 +262,50 @@ async function ensureContentScripts(tab) {
   }
 }
 
+// file:// 需使用者在 chrome://extensions 開「允許存取檔案網址」,否則內容腳本注入會失敗。
+// 注入失敗時頁面內無從顯示氣泡 → 明講原因,避免變成無聲的「右鍵沒反應」。
+async function warnInjectBlocked(url) {
+  if (/^file:\/\//.test(url || "")) {
+    const allowed = await new Promise((resolve) => {
+      try { chrome.extension.isAllowedFileSchemeAccess((ok) => resolve(!!ok)); }
+      catch { resolve(false); }
+    });
+    if (!allowed) {
+      console.warn("[aiyu] 本機檔案需在 chrome://extensions → aiyu → 詳細資料開啟「允許存取檔案網址」後才能翻譯");
+      return;
+    }
+  }
+  console.warn("[aiyu] 此頁面無法注入內容腳本,無法顯示翻譯氣泡:", url);
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   await ensureMenus();
   if (!tab?.id) return;
   if (info.menuItemId === MENU_IDS.SELECTION) {
-    // 確保 content script 在（擴充套件載入前就開的分頁不會有）
-    await ensureContentScripts(tab);
+    // 氣泡是 position:fixed 的分頁級浮層，一律送最上層框架(frameId 0)：article.js 只注入
+    // 最上層(manifest all_frames 預設 false)。PDF 檢視器/一般 iframe 的選取在子框架，
+    // 送 info.frameId 會落在沒有 aiyu listener 的框架被丟棄 → 氣泡完全不出現。
+    const injected = await ensureContentScripts(tab);
+    if (!injected) {
+      // 注入失敗(受限頁面，或 file:// 未開檔案存取) → 頁面內無從顯示氣泡，不再送注定被丟棄的訊息
+      await warnInjectBlocked(tab.url);
+      return;
+    }
     // 先即時告知 tab「翻譯中」氣泡
     chrome.tabs.sendMessage(
       tab.id,
       { type: "aiyu-show-selection-loading", original: info.selectionText },
-      info.frameId != null ? { frameId: info.frameId } : undefined
+      { frameId: 0 }
     ).catch(() => {});
     try {
+      // 選取文字仍向「選取所在框架」要(保留換行)；子框架無 article.js 時退回 info.selectionText
       const selText = await getSelectionText(tab.id, info.frameId, info.selectionText);
-      await translateSelection(selText, tab.id, info.frameId);
+      await translateSelection(selText, tab.id, 0);
     } catch (e) {
       chrome.tabs.sendMessage(
         tab.id,
         { type: "aiyu-show-selection-error", error: e.message },
-        info.frameId != null ? { frameId: info.frameId } : undefined
+        { frameId: 0 }
       ).catch(() => {});
     }
   }
