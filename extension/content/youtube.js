@@ -662,6 +662,9 @@
     refreshRetransLabel(); // 每次開選單即時反映目前模型(設定可能在選單關閉時被改過)
     menu.style.display = "block";
     positionMenu();
+    // 選單開啟時暫時隱藏字幕框，避免字幕(常落在底部中央)蓋住選單。用 visibility 不動
+    // render() 的 display 管理 → syncTick 仍在底下更新內容，收合後還原即顯示當前字幕。
+    if (box) box.style.visibility = "hidden";
   }
 
   // 延遲收合:跨越「按鈕↔選單」空隙時不會秒收(滑入選單會 clearTimeout)
@@ -669,6 +672,7 @@
     clearTimeout(menuHideTimer);
     menuHideTimer = setTimeout(() => {
       if (menu) menu.style.display = "none";
+      if (box) box.style.visibility = ""; // 選單收合 → 還原字幕框
     }, 200);
   }
 
