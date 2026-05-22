@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>aiyu 進階設定</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <h1>aiyu 進階設定</h1>
+
+    <section>
+      <h2>後端 CLI 與模型</h2>
+      <p class="hint">使用本機已安裝的 Claude Code 或 OpenAI Codex CLI。可在 popup 即時切換，這裡的選擇會同步。預設選各家最便宜的模型。</p>
+      <label class="row inline">
+        <span>使用</span>
+        <select id="cli">
+          <option value="codex">Codex</option>
+          <option value="claude">Claude</option>
+          <option value="agy">Antigravity</option>
+        </select>
+      </label>
+      <label class="row inline">
+        <span>模型</span>
+        <select id="model"></select>
+      </label>
+    </section>
+
+    <section>
+      <h2>自訂提示詞</h2>
+      <p class="hint">會附加到譯者 system prompt。可加領域術語、語氣偏好。</p>
+      <textarea id="customPrompt" rows="6" placeholder="例：本網站為遊戲開發領域，請將 sprite 譯為「精靈圖」、tilemap 譯為「圖磚地圖」。"></textarea>
+    </section>
+
+    <section>
+      <h2>詞庫對照（台灣正體）</h2>
+      <p class="hint">每行一條，格式 <code>對岸詞=台灣詞</code>。會注入提示詞引導譯者。</p>
+      <textarea id="glossary" rows="14" spellcheck="false"></textarea>
+      <button id="reset-glossary">還原預設詞庫</button>
+    </section>
+
+    <div class="row">
+      <button id="save">儲存</button>
+      <span id="status"></span>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

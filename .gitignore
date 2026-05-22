@@ -1,0 +1,11 @@
+# 私鑰 —— 擴充簽章金鑰，絕不可進版控（洩漏＝他人可冒用 aiyu 的 extension ID）
+*.pem
+
+# 執行期 log
+*.log
+
+# macOS
+.DS_Store
+
+# node（host 目前零相依，預留）
+node_modules/

@@ -1,0 +1,80 @@
+body {
+  font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+  max-width: 720px;
+  margin: 24px auto;
+  padding: 0 16px;
+  color: #222;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 24px 0 6px 0;
+}
+
+.hint {
+  font-size: 12px;
+  color: #666;
+  margin: 0 0 6px 0;
+}
+
+textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+button {
+  font: inherit;
+  padding: 6px 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+button:hover {
+  background: #f3f3f3;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.row.inline {
+  margin-top: 6px;
+}
+
+.row.inline select {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+#status {
+  font-size: 13px;
+  color: #2c8a3e;
+}
+
+code {
+  background: #f0f0f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}

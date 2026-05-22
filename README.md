@@ -3,7 +3,7 @@
 一個專注於 **YouTube 字幕翻譯** 的 Chrome 擴充套件，呼叫本機的 `claude`、`codex` 或 `agy`（Antigravity）CLI，把字幕翻成 **台灣正體中文**（也可翻譯網頁上選取的文字）。
 
 > **狀態**：MVP / 0.1.1
-> **平台**：macOS（Linux 應可，Windows 未測）
+> **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
 
 ---
@@ -33,26 +33,38 @@
 
 ## 安裝
 
-### 1. 載入擴充套件
+### 1. 取得程式碼
 
-1. 開啟 `chrome://extensions`
-2. 開啟 **「開發人員模式」**
-3. 點 **「載入未封裝項目」**，選擇本專案的 `extension/` 資料夾
-4. 複製 Chrome 顯示出的 **Extension ID**（一串 32 位小寫字母）
+`git clone` 本專案，或下載 release zip 解壓到一個**固定位置**（之後別刪／別移動 —— 擴充以
+「載入未封裝」從這個資料夾執行）。需要本機有 `node`（裝過 `claude`／`codex` 多半已具備）。
 
-### 2. 安裝 native host
+### 2. 安裝 native host（跨平台：macOS / Linux / Windows）
 
 ```bash
-cd host
-./install.sh <貼上的 Extension ID>
+node host/install.js
 ```
 
-腳本會把 host 程式**複製**到 `~/Library/Application Support/aiyu/`（macOS TCC 會擋 Chrome
-存取 `~/Documents`、`~/Desktop` 下的 script，故 host 必須住在 Application Support），
-並把 `com.lancetw.aiyu.json` 寫入瀏覽器的 `NativeMessagingHosts/` 目錄。
-支援 Chrome / Chrome Canary / Chromium / Edge / Brave / Arc，全部偵測到的都會裝。
+會自動：把 host 複製到穩定位置、產生 launcher（用當下 node 的絕對路徑啟動，不靠 shebang）、
+註冊 native messaging（mac/linux 寫各瀏覽器 `NativeMessagingHosts/` 目錄；Windows 寫
+`HKCU\…\NativeMessagingHosts` 登錄檔），最後印出載入擴充的步驟。偵測到的
+Chrome / Chrome Canary / Chromium / Edge / Brave / Arc 都會註冊。
 
-### 3. 確認 CLI 可用
+- `node host/install.js --dry-run`：只印出會做什麼，不實際寫入。
+- `node host/install.js --uninstall`：移除 host 註冊。
+
+> 取代舊的 `install.sh` / `deploy.sh`（仍可在 mac 用，但只有 `install.js` 跨平台、支援 Windows）。
+
+### 3. 載入擴充（off-store / 載入未封裝）
+
+依 `install.js` 印出的步驟：
+
+1. 開啟 `chrome://extensions`
+2. 開啟 **「開發人員模式」**（請**保持開啟**，否則 Chrome 會停用未封裝擴充）
+3. 點 **「載入未封裝項目」**，選 `extension/` 資料夾
+4. 載入後顯示的 Extension ID 應為 `loelfpeedlfjbjekifhjbbgejajnnpan`（固定值，已烤進 host 的
+   `allowed_origins`，**不用手動複製貼上**）
+
+### 4. 確認 CLI 可用
 
 aiyu 預期下列任一執行檔已可呼叫：
 
@@ -60,10 +72,7 @@ aiyu 預期下列任一執行檔已可呼叫：
 - `claude`（Anthropic Claude Code CLI）
 - `agy`（Google Antigravity CLI；以 `agy -p` 呼叫。模型由帳號端自動路由，無法在 aiyu 指定）
 
-預設會去找這些路徑：
-`/opt/homebrew/bin`、`/usr/local/bin`、`~/.local/bin`、`~/.nvm/...`
-
-若你的安裝路徑不同，可在 shell profile 裡設定：
+找不到時可設定環境變數（mac/linux 寫 shell profile；Windows 用系統環境變數）：
 
 ```bash
 export AIYU_CLAUDE_PATH=/your/path/to/claude
@@ -71,11 +80,13 @@ export AIYU_CODEX_PATH=/your/path/to/codex
 export AIYU_AGY_PATH=/your/path/to/agy
 ```
 
-### 4. 重啟瀏覽器
+> Windows 提醒：`claude`／`codex` 多半是 npm 裝的 `.cmd`；host 已會自動找 `%APPDATA%\npm` 等位置與 `.cmd`/`.exe` 副檔名。
+
+### 5. 重啟瀏覽器
 
 關掉所有 Chrome 視窗再開（讓 Native Messaging 重新註冊）。
 
-### 5. 測試
+### 6. 測試
 
 點擴充套件圖示 → 「測試 host 連線」。應顯示「連線成功：aiyu-host」。
 
@@ -83,11 +94,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 >
 > 前端與 host 的更新方式**不對稱**：
 > - **前端**（`extension/`：`youtube.js`、`sw.js`、`manifest.json`…）：`chrome://extensions` 重新載入 + **重整該分頁**即生效（content script 在頁面載入時注入，舊分頁不會自動更新）。
-> - **host**（`host/aiyu-host.js`）：**不會自動同步**到瀏覽器實際啟動的位置。改完必須重新部署：
->   ```bash
->   ./host/deploy.sh        # 只複製 host，不動 manifest
->   ```
->   再到 `chrome://extensions` 重新載入 aiyu（讓常駐的舊 host 行程退場、下次翻譯啟動新碼）。
+> - **host**（`host/aiyu-host.js`）：**不會自動同步**到瀏覽器實際啟動的位置。改完必須重新部署：`node host/install.js`（或 `./host/deploy.sh` 只複製 host），再到 `chrome://extensions` 重新載入 aiyu（讓常駐的舊 host 行程退場、下次翻譯啟動新碼）。
 
 ---
 
@@ -118,7 +125,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 - 不做整篇網頁文章逐段翻譯（僅支援「選取文字」翻譯）
 - 不做語音辨識（YouTube 沒有字幕的影片就跳過）
 - 每次 CLI spawn 約 1–3 秒，首段翻譯會明顯停頓；後續段落因 cache + 並行較快
-- Native host 不能透過 Chrome Web Store 散布，使用者必須手動跑 `install.sh`
+- Native host 不能透過 Chrome Web Store 散布，使用者必須手動跑 `node host/install.js`
 
 ---
 
@@ -156,9 +163,10 @@ aiyu/
 │   ├── options/               # 詞庫與進階設定
 │   └── icons/
 └── host/
-    ├── aiyu-host.js           # native messaging host
-    ├── aiyu-host.sh           # wrapper：補 PATH 後 exec node host
+    ├── aiyu-host.js           # native messaging host（跨平台 CLI 偵測）
+    ├── install.js             # ★ 跨平台安裝器（host 註冊 + 印出載入擴充步驟）
+    ├── aiyu-host.sh           # （舊）mac wrapper：補 PATH 後 exec node host
     ├── com.lancetw.aiyu.json.template
-    ├── install.sh             # 首次安裝（複製 host + 寫 native messaging manifest）
-    └── deploy.sh              # 改完 host 後重新部署（只複製 host，不動 manifest）
+    ├── install.sh             # （舊）mac 首次安裝
+    └── deploy.sh              # （舊）mac 重新部署 host
 ```

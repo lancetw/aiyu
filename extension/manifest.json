@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "aiyu — AI 譯語",
+  "version": "0.1.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8oUcjMme5ildxtj09bb5FBm+AmRlB4Fn4gDrs6rPM5d6vXJOlQvPE/qUuSspQq7dZH1siM/MC2+gvjjybukbggs8Nr1zMhPCJCVorXJVxQowR377F0Ey+oFhynIan8QIaFm8DFO0A7Smrrg9FIGpjMURkBhJMXRCI64uLuQCcscTSKxDrCbFZgZceUooqq8OrjxETvvvwiAugBjl1GoSHL9aNdsivtBx12wOfxNBib3224hVRTiNaH779MNRA8nV0L/WQ8PS2RpHnQZjkt/Kc5DVV5YrFbNSM+Q/rsniqe/thgObpYXBSa5WCW0QhEXS9YtznN+pvLStOzQmSIPrHQIDAQAB",
+  "description": "用 claude 或 codex 翻譯 YouTube 字幕，預設台灣正體中文。",
+  "permissions": ["nativeMessaging", "storage", "activeTab", "scripting", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "sw.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content/yt-key-shim.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content/search-box.js", "content/youtube.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/search-box.js", "content/article.js"],
+      "css": ["content/article.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
