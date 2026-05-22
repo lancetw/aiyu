@@ -100,6 +100,32 @@
   animation: aiyu-fade-in 0.15s ease-out;
 }
 
+/* PDF(out-of-process 外掛)頁:關掉原生 resize、改用自訂把手(見 article.js)。
+   原生 resize 逐幀改尺寸會逼外掛區跨進程重新合成 → 卡頓;自訂版只在放開滑鼠時套用一次。 */
+.aiyu-bubble.aiyu-bubble-pdf {
+  resize: none;
+}
+.aiyu-bubble-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 1;
+  /* 右下斜線把手 */
+  background: linear-gradient(135deg, transparent 50%, rgba(127, 127, 127, 0.55) 50%);
+}
+/* 拖曳縮放時的輕量預覽外框:透明內部、僅虛線邊 → 幾乎不重繪,放開才套用真實尺寸 */
+.aiyu-resize-outline {
+  position: fixed;
+  z-index: 2147483647;
+  border: 1.5px dashed rgba(80, 130, 200, 0.9);
+  border-radius: 8px;
+  background: transparent;
+  pointer-events: none;
+}
+
 .aiyu-bubble-header {
   display: flex;
   align-items: center;

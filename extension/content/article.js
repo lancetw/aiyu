@@ -13,6 +13,8 @@
   // 拖曳狀態放模組層級：window 監聽只掛一次，避免重複掛載
   let dragging = false;
   let dragSX = 0, dragSY = 0, dragL0 = 0, dragT0 = 0;
+  // 是否為 Chrome PDF 檢視器頁：PDF 上拖曳/縮放改用 pointer + 外框延遲套用(見 setupPdfInteractions)
+  let isPdf = false;
   // 僅記大小(寬高字串)；位置不記，每次開窗貼齊選取文字
   let selSize = loadJSON("aiyu-sel-size", null);
   // 字級(px)，記住跨開窗。預設 14，範圍 11–28。
@@ -59,6 +61,91 @@
     bubbleBody.scrollTo({ top: bubbleBody.scrollTop + delta, behavior: "smooth" });
   }
 
+  // Chrome 內建 PDF 檢視器：頂層文件含 <embed>(型別隨版本為 application/pdf 或
+  // application/x-google-chrome-pdf)。此偵測法與 Hypothesis 等標註擴充一致。
+  function isPdfDoc() {
+    try {
+      if (document.contentType === "application/pdf") return true;
+    } catch { /* 某些情境 contentType 不可讀 */ }
+    return !!document.querySelector(
+      'embed[type="application/pdf"], embed[type="application/x-google-chrome-pdf"]'
+    );
+  }
+
+  // PDF(out-of-process 外掛)上，逐幀改變浮層的位置/尺寸都會逼外掛區跨進程重新合成 → 拖曳/縮放卡頓；
+  // 且原生 window mousemove 在游標移到 PDF <embed> 上時不會觸發(事件落入外掛子框架)。
+  // 解法：移動(標題列)與縮放(右下把手)都改用 pointer + setPointerCapture(事件全程留在把手、不外洩到
+  // PDF)，過程只移動透明虛線外框(幾乎不重繪)，放開滑鼠才把位置/尺寸一次套回氣泡。
+  function setupPdfInteractions(b, header, title) {
+    b.classList.add("aiyu-bubble-pdf"); // CSS 關掉原生 resize 把手
+
+    // 依氣泡目前位置/大小建立預覽外框
+    function makeOutline() {
+      const r = b.getBoundingClientRect();
+      const o = document.createElement("div");
+      o.className = "aiyu-resize-outline";
+      o.style.left = r.left + "px";
+      o.style.top = r.top + "px";
+      o.style.width = r.width + "px";
+      o.style.height = r.height + "px";
+      document.body.appendChild(o);
+      return { o, r };
+    }
+
+    // 拖曳標題列移動：放開才套位置
+    header.addEventListener("pointerdown", (e) => {
+      if (e.target !== header && e.target !== title) return; // 按按鈕不觸發
+      e.preventDefault();
+      try { header.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      const { o, r } = makeOutline();
+      const sx = e.clientX, sy = e.clientY, l0 = r.left, t0 = r.top, w = r.width;
+      const move = (ev) => {
+        o.style.left = Math.max(40 - w, Math.min(l0 + (ev.clientX - sx), window.innerWidth - 40)) + "px";
+        o.style.top = Math.max(0, Math.min(t0 + (ev.clientY - sy), window.innerHeight - 40)) + "px";
+      };
+      const up = () => {
+        header.removeEventListener("pointermove", move);
+        header.removeEventListener("pointerup", up);
+        header.removeEventListener("pointercancel", up);
+        b.style.left = o.style.left;
+        b.style.top = o.style.top;
+        o.remove();
+      };
+      header.addEventListener("pointermove", move);
+      header.addEventListener("pointerup", up);
+      header.addEventListener("pointercancel", up);
+    });
+
+    // 右下把手縮放：放開才套尺寸
+    const grip = document.createElement("div");
+    grip.className = "aiyu-bubble-grip";
+    grip.title = "拖曳縮放";
+    b.appendChild(grip);
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { grip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      const { o, r } = makeOutline();
+      const sx = e.clientX, sy = e.clientY, sw = r.width, sh = r.height;
+      const move = (ev) => {
+        o.style.width = Math.max(240, sw + (ev.clientX - sx)) + "px"; // 對齊 CSS min-width
+        o.style.height = Math.max(120, sh + (ev.clientY - sy)) + "px"; // 對齊 CSS min-height
+      };
+      const up = () => {
+        grip.removeEventListener("pointermove", move);
+        grip.removeEventListener("pointerup", up);
+        grip.removeEventListener("pointercancel", up);
+        b.style.width = parseFloat(o.style.width) + "px";
+        b.style.height = parseFloat(o.style.height) + "px";
+        o.remove();
+        selSize = { w: b.style.width, h: b.style.height };
+        saveJSON("aiyu-sel-size", selSize);
+      };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up);
+      grip.addEventListener("pointercancel", up);
+    });
+  }
+
   // 建立(或取得)浮動視窗：標題列(可拖曳, 含 ×) + 搜尋列 + 可捲動 body。只建一次。
   function ensureBubble() {
     if (bubble && document.body.contains(bubble)) return bubble;
@@ -95,6 +182,7 @@
 
     // 只在按到標題列空白處或標題文字才拖曳(按按鈕不觸發)。記視窗座標，與 fixed 同基準。
     header.addEventListener("mousedown", (e) => {
+      if (isPdf) return; // PDF 改用 pointer + 外框延遲套用(見 setupPdfInteractions)
       if (e.target !== header && e.target !== title) return;
       const r = bubble.getBoundingClientRect();
       dragging = true;
@@ -126,6 +214,8 @@
     bubble.append(header, searchBox.el, bubbleBody);
     document.body.appendChild(bubble);
     applyLayout(); // 初始化排版按鈕標籤
+    isPdf = isPdfDoc();
+    if (isPdf) setupPdfInteractions(bubble, header, title); // PDF 上拖曳/縮放改「放開才套用」，避免逐幀卡頓
     return bubble;
   }
 
