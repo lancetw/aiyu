@@ -221,6 +221,23 @@ async function translateSelection(text, tabId, frameId) {
   }
 }
 
+// Chrome 的 info.selectionText 會把換行替換成空白(crbug 116429)。改向 content script
+// 要 window.getSelection().toString()(保留換行)；取不到(如 iframe 未注入)才退回 fallback。
+async function getSelectionText(tabId, frameId, fallback) {
+  try {
+    const resp = await chrome.tabs.sendMessage(
+      tabId,
+      { type: "aiyu-get-selection" },
+      frameId != null ? { frameId } : undefined
+    );
+    const t = resp?.text;
+    if (t && t.trim()) return t;
+  } catch {
+    /* content script 不在該 frame → 用 fallback */
+  }
+  return fallback || "";
+}
+
 // 把對應的 content script 注入分頁。content script 有 __aiyuLoaded guard，
 // 重複注入是安全的（guard 會讓它 early return，不重複註冊 listener）。
 async function ensureContentScripts(tab) {
@@ -256,7 +273,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       info.frameId != null ? { frameId: info.frameId } : undefined
     ).catch(() => {});
     try {
-      await translateSelection(info.selectionText, tab.id, info.frameId);
+      const selText = await getSelectionText(tab.id, info.frameId, info.selectionText);
+      await translateSelection(selText, tab.id, info.frameId);
     } catch (e) {
       chrome.tabs.sendMessage(
         tab.id,

@@ -21,6 +21,10 @@
   let selLayout = localStorage.getItem("aiyu-sel-layout") === "cols" ? "cols" : "stack";
   let layoutBtn = null;
 
+  // Chrome 的 info.selectionText 會把換行替換成空白(crbug 116429) → 右鍵當下自行用
+  // window.getSelection() 擷取(保留換行)，存起來供 sw 透過 aiyu-get-selection 取用。
+  let lastSelectionText = "";
+
   function clampSelFont(n) {
     return Math.min(28, Math.max(11, n || 14));
   }
@@ -244,7 +248,21 @@
     }
   });
 
+  // 右鍵當下擷取選取文字(保留換行)。capture 階段先於頁面自身的處理。
+  window.addEventListener(
+    "contextmenu",
+    () => {
+      lastSelectionText = (window.getSelection && window.getSelection().toString()) || "";
+    },
+    true
+  );
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "aiyu-get-selection") {
+      const live = (window.getSelection && window.getSelection().toString()) || "";
+      sendResponse({ text: lastSelectionText || live });
+      return;
+    }
     if (msg?.type === "aiyu-show-selection-loading") {
       showSelectionLoading();
       sendResponse({ ok: true });
