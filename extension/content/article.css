@@ -199,6 +199,7 @@
 .aiyu-bubble-original {
   font-size: 0.85em;
   color: #888;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 /* 上下堆疊：原文在下 → 與上方譯文以虛線分隔 */
@@ -215,6 +216,7 @@
 
 .aiyu-bubble-zh {
   color: #222;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 
