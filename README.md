@@ -56,8 +56,6 @@ Chrome / Chrome Canary / Chromium / Edge / Brave / Arc 都會註冊。
 - `node host/install.js --dry-run`：只印出會做什麼，不實際寫入。
 - `node host/install.js --uninstall`：移除 host 註冊。
 
-> 取代舊的 `install.sh` / `deploy.sh`（仍可在 mac 用，但只有 `install.js` 跨平台、支援 Windows）。
-
 ### 3. 載入擴充（off-store / 載入未封裝）
 
 依 `install.js` 印出的步驟：
@@ -98,7 +96,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 >
 > 前端與 host 的更新方式**不對稱**：
 > - **前端**（`extension/`：`youtube.js`、`sw.js`、`manifest.json`…）：`chrome://extensions` 重新載入 + **重整該分頁**即生效（content script 在頁面載入時注入，舊分頁不會自動更新）。
-> - **host**（`host/aiyu-host.js`）：**不會自動同步**到瀏覽器實際啟動的位置。改完必須重新部署：`node host/install.js`（或 `./host/deploy.sh` 只複製 host），再到 `chrome://extensions` 重新載入 aiyu（讓常駐的舊 host 行程退場、下次翻譯啟動新碼）。
+> - **host**（`host/aiyu-host.js`）：**不會自動同步**到瀏覽器實際啟動的位置。改完必須重新部署：`node host/install.js`，再到 `chrome://extensions` 重新載入 aiyu（讓常駐的舊 host 行程退場、下次翻譯啟動新碼）。
 
 ---
 
@@ -143,10 +141,10 @@ export AIYU_AGY_PATH=/your/path/to/agy
 
 | 症狀 | 原因 |
 |---|---|
-| popup 顯示「連線失敗：Specified native messaging host not found.」 | `install.sh` 沒對到正確 Extension ID，或瀏覽器沒重啟 |
+| popup 顯示「連線失敗：Specified native messaging host not found.」 | `node host/install.js` 沒成功註冊，或瀏覽器沒重啟 |
 | 「spawn failed: ENOENT」 | CLI 找不到，設 `AIYU_CLAUDE_PATH` 或 `AIYU_CODEX_PATH` |
 | 「找不到 JSON 陣列輸出」 | CLI 回傳格式跑掉，看 `~/Library/Application Support/aiyu/aiyu-host.log` 檢查實際輸出 |
-| 改了 host 卻沒生效 | host 不會自動同步，要跑 `./host/deploy.sh` 重新部署再重載擴充套件 |
+| 改了 host 卻沒生效 | host 不會自動同步，要跑 `node host/install.js` 重新部署再重載擴充套件 |
 | YouTube 字幕沒翻 | 確認 YT 字幕已開啟、頁面 reload 一次（SPA 路由切換有偵測但偶爾漏） |
 
 ---
@@ -159,6 +157,7 @@ aiyu/
 │   ├── manifest.json
 │   ├── sw.js                  # service worker — 路由 / cache
 │   ├── content/
+│   │   ├── yt-key-shim.js     # YT「C」鍵攔截（world:MAIN、document_start，搶在 YT 前）
 │   │   ├── search-box.js      # 共用搜尋列（逐字稿面板／選取視窗共用）
 │   │   ├── article.js         # 選取文字翻譯的浮動視窗 UI
 │   │   ├── article.css
@@ -169,8 +168,8 @@ aiyu/
 └── host/
     ├── aiyu-host.js           # native messaging host（跨平台 CLI 偵測）
     ├── install.js             # ★ 跨平台安裝器（host 註冊 + 印出載入擴充步驟）
-    ├── aiyu-host.sh           # （舊）mac wrapper：補 PATH 後 exec node host
-    ├── com.lancetw.aiyu.json.template
-    ├── install.sh             # （舊）mac 首次安裝
-    └── deploy.sh              # （舊）mac 重新部署 host
+    ├── diag.sh                # 純診斷：證明瀏覽器能否 exec binary（不走 native messaging）
+    ├── smoke.js               # 煙霧測試：模擬 Chrome 送 ping + 一段 translate
+    ├── smoke-concurrent.js    # 煙霧測試：同時 3 筆 translate，驗 id 不混淆
+    └── smoke-model.js         # 煙霧測試：驗 model 參數有帶到 CLI
 ```
