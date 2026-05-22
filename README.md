@@ -6,6 +6,10 @@
 > **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
 
+![aiyu 在 YouTube 上的雙語字幕 overlay、右側中英對照逐字稿面板，與左側選取翻譯浮動視窗](docs/images/youtube-bilingual.png)
+
+> 上圖：YouTube 影片同時顯示播放器上的雙語字幕、右側可跟隨高亮的中英對照逐字稿面板，與左側選取文字的翻譯浮動視窗。
+
 ---
 
 ## 架構
