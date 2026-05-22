@@ -2,7 +2,7 @@
 
 一個專注於 **YouTube 字幕翻譯** 的 Chrome 擴充套件，呼叫本機的 `claude`、`codex` 或 `agy`（Antigravity）CLI，把字幕翻成 **台灣正體中文**（也可翻譯網頁上選取的文字）。
 
-> **狀態**：MVP / 0.1.1
+> **狀態**：0.2.0
 > **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
 
@@ -102,7 +102,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 
 ## 使用
 
-- **YouTube**：開啟有字幕的影片，點播放列上的「譯」按鈕；譯文會以雙語字幕疊在播放器上（字幕框可拖曳、滾輪縮放字級）。右上角徽章顯示進度／狀態（含「翻譯額度用盡」）。把游標移到「譯」按鈕會展開選單：**開啟中英對照字幕**（可拖曳縮放的逐字稿面板，自動跟隨高亮、點句跳轉、可搜尋）與**下載中英對照 SRT**。
+- **YouTube**：開啟有字幕的影片，點播放列上的「譯」按鈕；譯文會以雙語字幕疊在播放器上（字幕框可拖曳、滾輪縮放字級）。右上角徽章顯示進度／狀態（首批翻好前顯示「連接 ⟨模型⟩ 模型中…」，含「翻譯額度用盡」）。把游標移到「譯」按鈕會展開選單：**開啟雙語對照字幕**（可拖曳縮放的逐字稿面板，自動跟隨高亮、點句跳轉、可搜尋；標題列顯示翻譯所用模型）、**下載雙語對照 SRT**，與**重新翻譯（⟨目前模型⟩）**（清掉舊譯文、套用目前模型重翻整支；切換模型後用它取得新模型譯文）。
 - **選取文字**：在任意網頁選取一段文字 → 右鍵「aiyu：翻譯選取文字」→ 譯文顯示在浮動視窗（可拖曳、縮放、調整字級、切換譯上原下／左右並排、關鍵字搜尋）。
 - **設定**：點圖示開啟 popup（後端 CLI、模型、目標語言、風格）；點「進階設定」可編輯詞庫與自訂提示詞。
 
@@ -113,7 +113,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 | 設定 | 預設 | 說明 |
 |---|---|---|
 | `cli` | `codex` | 使用 `codex exec`、`claude -p` 或 `agy -p`（Antigravity 無模型可選） |
-| `model` | codex=`gpt-5.4-mini`、claude=`haiku` | 各後端使用的模型；Antigravity 由帳號端自動路由，無此選項 |
+| `model` | codex=`gpt-5.5`、claude=`Opus 4.7` | 各後端使用的模型（預設為最強）；claude 可選 Haiku 4.5 / Sonnet 4.6 / Opus 4.7 / Opus 4.6，UI 標示版本；Antigravity 由帳號端自動路由，無此選項 |
 | `target` | `zh-TW` | 目標語言（繁中台灣 / 簡中 / 英 / 日） |
 | `style` | `natural` | natural / literal / academic |
 | `glossary` | 內建約 200 條 | 對岸詞 → 台灣詞對照 |
@@ -173,3 +173,9 @@ aiyu/
     ├── smoke-concurrent.js    # 煙霧測試：同時 3 筆 translate，驗 id 不混淆
     └── smoke-model.js         # 煙霧測試：驗 model 參數有帶到 CLI
 ```
+
+---
+
+## 授權
+
+[MIT](LICENSE) © 2026 lancetw

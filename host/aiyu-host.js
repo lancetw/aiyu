@@ -10,7 +10,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-const HOST_VERSION = "0.1.0";
+const HOST_VERSION = "0.2.0";
 // 單次 codex/claude 呼叫上限。實測健康呼叫約 10-20s；codex 偶發會整個卡住，
 // 120s 太久會凍住一整組字幕 → 設 60s，卡住的呼叫及早失敗、交給前端拆半重試。
 const SPAWN_TIMEOUT_MS = 60_000;
