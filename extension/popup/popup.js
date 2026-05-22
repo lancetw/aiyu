@@ -1,41 +1,7 @@
 const status = document.getElementById("status");
 
-// 2026 模型清單。預設為各 CLI 最便宜的版本。
-const MODELS = {
-  codex: [
-    { value: "gpt-5.4-mini", label: "GPT-5.4 mini（最快最省）" },
-    { value: "gpt-5.3-codex", label: "GPT-5.3 Codex（程式專用）" },
-    { value: "gpt-5.4", label: "GPT-5.4（旗艦）" },
-    { value: "gpt-5.5", label: "GPT-5.5（最強）" }
-  ],
-  claude: [
-    { value: "haiku", label: "Haiku（最快最省）" },
-    { value: "sonnet", label: "Sonnet（均衡）" },
-    { value: "opus", label: "Opus（最強）" }
-  ]
-};
-const DEFAULT_MODEL = { codex: "gpt-5.4-mini", claude: "haiku" };
-
-function fillModelOptions(cli, selected) {
-  const sel = document.getElementById("model");
-  const row = sel.closest("label");
-  sel.replaceChildren();
-  // agy 等無模型可選的後端：模型由後端自動決定 → 隱藏整列，不擺死控制項
-  if (!MODELS[cli]) {
-    if (row) row.style.display = "none";
-    return;
-  }
-  if (row) row.style.display = "";
-  for (const m of MODELS[cli]) {
-    const opt = document.createElement("option");
-    opt.value = m.value;
-    opt.textContent = m.label;
-    sel.appendChild(opt);
-  }
-  sel.value = selected && MODELS[cli].some((m) => m.value === selected)
-    ? selected
-    : DEFAULT_MODEL[cli];
-}
+// 模型清單／預設／下拉填充的單一來源 = ../shared/models.js（popup.html 先載入該檔，掛在 self.AIYU）。
+const { DEFAULT_MODEL, fillModelOptions } = AIYU;
 
 function setStatus(text, kind = "info") {
   status.textContent = text;
@@ -45,8 +11,8 @@ function setStatus(text, kind = "info") {
 async function loadSettings() {
   const d = await chrome.storage.sync.get({
     cli: "codex",
-    codexModel: "gpt-5.4-mini",
-    claudeModel: "haiku",
+    codexModel: DEFAULT_MODEL.codex,
+    claudeModel: DEFAULT_MODEL.claude,
     target: "zh-TW",
     style: "natural"
   });
@@ -72,8 +38,8 @@ document.getElementById("cli").addEventListener("change", async (e) => {
   const cli = e.target.value;
   await saveSetting("cli", cli);
   const d = await chrome.storage.sync.get({
-    codexModel: "gpt-5.4-mini",
-    claudeModel: "haiku"
+    codexModel: DEFAULT_MODEL.codex,
+    claudeModel: DEFAULT_MODEL.claude
   });
   fillModelOptions(cli, cli === "codex" ? d.codexModel : d.claudeModel);
 });
@@ -124,8 +90,8 @@ document.getElementById("open-options").addEventListener("click", (e) => {
           cliSel.value = fallback;
           await chrome.storage.sync.set({ cli: fallback });
           const d = await chrome.storage.sync.get({
-            codexModel: "gpt-5.4-mini",
-            claudeModel: "haiku"
+            codexModel: DEFAULT_MODEL.codex,
+            claudeModel: DEFAULT_MODEL.claude
           });
           fillModelOptions(fallback, fallback === "codex" ? d.codexModel : d.claudeModel);
           setStatus(`偵測到偏好 CLI 未安裝，已切到 ${fallback}`, "ok");

@@ -36,22 +36,11 @@ function makeKey(text, target, style, context, backend) {
   return `${backend}|${target}|${style}|${context}|${text}`;
 }
 
-// 由設定推出實際模型：agy（Antigravity）由帳號端自動路由、print 模式無法指定 → null。
-function resolveModel(settings) {
-  return settings.cli === "codex" ? settings.codexModel
-    : settings.cli === "claude" ? settings.claudeModel
-    : null;
-}
-
-// 給使用者看的「翻譯用模型」標籤：後端 · 模型（agy 由帳號端路由、無模型 → 只顯示後端名）。
-function modelLabel(cli, model) {
-  const name =
-    cli === "codex" ? "Codex"
-    : cli === "claude" ? "Claude"
-    : cli === "agy" ? "Antigravity"
-    : (cli || "");
-  return model ? `${name} · ${model}` : name;
-}
+// 模型清單／標籤工具的單一來源 = shared/models.js。瀏覽器(classic SW)走 importScripts；
+// node 測試走 require。兩者都把 AIYU 掛到全域(self/globalThis)。
+if (typeof importScripts === "function") importScripts("shared/models.js");
+else if (typeof require === "function") require("./shared/models.js");
+const { resolveModel, modelLabel, DEFAULT_MODEL } = AIYU;
 
 function ensurePort() {
   if (port) return port;
@@ -120,8 +109,8 @@ async function callHost(action, payload, timeoutMs = 90000) {
 async function getSettings() {
   const d = await chrome.storage.sync.get({
     cli: "codex",
-    codexModel: "gpt-5.4-mini",
-    claudeModel: "haiku",
+    codexModel: DEFAULT_MODEL.codex,
+    claudeModel: DEFAULT_MODEL.claude,
     target: "zh-TW",
     style: "natural",
     customPrompt: "",
@@ -176,9 +165,12 @@ async function translateBatch(segments, settings, context) {
   // result: [{id, zh}]
   const byId = new Map(result.map((r) => [r.id, r.zh]));
   for (const n of need) {
-    const zh = byId.get(n.seg.id) ?? n.seg.text;
-    cacheSet(n.key, zh);
-    out[n.idx] = { id: n.seg.id, zh };
+    const got = byId.get(n.seg.id);
+    const real = got != null && String(got).trim() !== "";
+    // 只快取「真實譯文」。host 漏回或回空(CLI 限流、輸出截斷時會發生)→ 回退原文顯示，
+    // 但不快取回退值：否則把英文原文/空字串當成譯文鎖進快取，限流恢復後重翻也拿不到中文。
+    if (real) cacheSet(n.key, String(got));
+    out[n.idx] = { id: n.seg.id, zh: real ? String(got) : n.seg.text };
   }
   return { results: out, model: modelLabel(usedCli, usedModel) };
 }

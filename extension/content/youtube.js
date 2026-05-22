@@ -21,7 +21,7 @@
   const SYNC_MS = 200;
   // 預載緩衝：從開頭起「連續已翻好」的字幕要覆蓋到第幾秒，才從頭自動播放。
   // 設大 → 開播前等更久，但播放較不會追上翻譯前線(導致字幕落後 / 露原文)。
-  const PREROLL_SEC = 300; // 5 分鐘
+  const PREROLL_SEC = 180; // 3 分鐘
 
   let active = false;
   let videoId = "";
@@ -618,7 +618,10 @@
       menuHint.style.display = "none";
     } else {
       menuHint.style.display = "block";
-      menuHint.textContent = active ? `翻譯中 ${progressPct}%` : "請先啟動翻譯";
+      // 0%（首批尚未翻好）顯示「連接模型中…」與徽章一致；此處同步無模型名故用泛用文案。
+      menuHint.textContent = active
+        ? (progressPct > 0 ? `翻譯中 ${progressPct}%` : "連接模型中…")
+        : "請先啟動翻譯";
     }
   }
 
@@ -634,18 +637,22 @@
     menu.style.bottom = (pr.bottom - br.top + 8) + "px";
   }
 
-  // 「重新翻譯」文案補上目前設定會套用的模型(向 SW 查，標籤格式以 SW 為單一事實來源)。
-  // 顯示「目前」而非「上次翻譯」的模型：使用者剛在 options 改了模型、尚未重翻時，
-  // 這顆按鈕要明確標示按下去會用哪個模型。
-  async function refreshRetransLabel() {
-    if (!menuRetransRow) return;
+  // 向 SW 查「目前設定會套用的模型」標籤(格式以 SW 的 modelLabel 為單一事實來源)。
+  // 取「目前設定」而非「上次翻譯」：剛在 options 改了模型、尚未重翻時也要正確。
+  async function fetchModelLabel() {
     try {
       const resp = await chrome.runtime.sendMessage({ type: "get-settings" });
-      const label = resp?.model || "";
-      menuRetransRow.textContent = label ? `重新翻譯（${label}）` : "重新翻譯";
+      return resp?.model || "";
     } catch {
-      menuRetransRow.textContent = "重新翻譯"; // SW 不可用 → 退回純文案
+      return ""; // SW 不可用 → 空字串，呼叫端自行退回泛用文案
     }
+  }
+
+  // 「重新翻譯」文案補上目前模型，明確標示按下去會用哪個模型。
+  async function refreshRetransLabel() {
+    if (!menuRetransRow) return;
+    const label = await fetchModelLabel();
+    menuRetransRow.textContent = label ? `重新翻譯（${label}）` : "重新翻譯";
   }
 
   function showMenu() {
@@ -1149,20 +1156,24 @@
   }
 
   // 把待翻譯的 cue 切成「段落」，每段是一次 CLI 呼叫的單位。
-  // 實測（codex gpt-5.4-mini）：每次呼叫固定成本約 6s + 內容約 0.2s/句。
-  // 段落調大可攤平固定成本，但超過 ~120 句後延遲明顯上升 → ~100 句為甜蜜點。
-  // 預載緩衝(PREROLL_SEC)會先備足才開播 → 不再需要「刻意切小首段以求快播第一句」。
+  // 用「字數」而非「句數」分組：單次 CLI 呼叫的延遲取決於 prompt/輸出大小，而字幕疏密差很多
+  // (短片段 vs 長句) → 只有字數上限能穩定壓住每次呼叫時間。實測 claude haiku：2 併發、
+  // 群組 prompt ~3300 約 23-32s 穩定完成；群組過大(prompt ~6500)其中一個會被拖過 host
+  // 60s 上限被 SIGKILL → 卡進度。故壓小群組、保守留餘裕(瀏覽器播放佔 CPU、claude 變異大)。
   function groupCues(idxList) {
-    const TARGET = 98;  // 每段目標：大 → 攤平固定成本（盡量在句尾收尾）
-    const MAX = 122;    // 硬上限：超過此值 codex 延遲明顯上升，得不償失
+    const SOFT_CHARS = 800;  // 達此且句尾 → 收尾(對齊句界，譯文較完整)
+    const HARD_CHARS = 1200; // 硬上限：壓住單次 prompt 大小，確保 2 併發也穩在 60s 內
     const groups = [];
     let cur = [];
+    let chars = 0;
     for (const idx of idxList) {
       cur.push(idx);
+      chars += (cues[idx].text || "").length;
       const endsSentence = /[.!?。！？]["'”’)）\]]?\s*$/.test(cues[idx].text);
-      if ((cur.length >= TARGET && endsSentence) || cur.length >= MAX) {
+      if ((chars >= SOFT_CHARS && endsSentence) || chars >= HARD_CHARS) {
         groups.push(cur);
         cur = [];
+        chars = 0;
       }
     }
     if (cur.length) groups.push(cur);
@@ -1198,7 +1209,10 @@
     let firstError = "";
     let quotaHit = false; // 偵測到額度用盡 → 立刻中止整輪，不再連敲已鎖額度的 CLI
     progressPct = 0;
-    setBadgeProgress("翻譯中 0%");
+    // 第一批翻好前顯示「連接 <模型> 中…」而非「翻譯中 0%」：claude 首呼叫要十幾~數十秒，
+    // 0% 久不動會像當機，明講「正在連接哪個模型」較不焦慮。
+    const model = await fetchModelLabel();
+    setBadgeProgress(model ? `連接 ${model} 模型中…` : "連接模型中…");
     updateMenuState();
 
     // 挑下一個要翻的段落 —— 不照固定順序，而是優先翻「使用者目前播放位置」
@@ -1228,49 +1242,34 @@
       return groups[best];
     }
 
-    // 送一組 cue 去翻譯並套用結果；成功回 true。
-    // 對抗 straggler：主呼叫超過 HEDGE_MS 仍沒結果，就並送一份備援呼叫，
-    // 誰先成功就用誰 —— codex 偶發單次被拖慢 2~3 倍，重送一份通常是正常速度。
+    // 送一組 cue 去翻譯並套用結果；成功回 true。一組 = 一次 CLI 呼叫。
+    // 不做 hedge（先前：呼叫逾 20s 未回就並送一份備援）。claude 等 CLI 每次有
+    // ~20s 固定開銷（實測：1 句 24.8s、40 句 19.5s，幾乎與批次大小無關），
+    // 會讓 20s 的 hedge 幾乎每次必觸發 → 併發翻倍、多個重量級行程互搶資源 →
+    // 撞 host 60s 上限被 SIGKILL → 進度卡死。實測單次/2 併發 claude 都 < 60s，
+    // 移除 hedge 即解；偶發整組失敗仍由 worker 的「拆半重試」兜底。
     async function translateGroup(idxList) {
       if (!idxList.length) return true;
       const segments = idxList.map((idx) => ({ id: String(idx), text: cues[idx].text }));
-      const HEDGE_MS = 20000;
 
-      const attempt = async () => {
-        try {
-          const resp = await sendTranslate(segments);
-          if (resp?.ok && Array.isArray(resp.results)) return resp;
-          const err = resp?.error || "host 無回應";
-          if (!firstError) firstError = err;
-          if (err.includes("額度用盡")) quotaHit = true;
-        } catch (e) {
-          const err = e?.message || "連線中斷";
+      let resp = null;
+      try {
+        const r = await sendTranslate(segments);
+        if (r?.ok && Array.isArray(r.results)) resp = r;
+        else {
+          const err = r?.error || "host 無回應";
           if (!firstError) firstError = err;
           if (err.includes("額度用盡")) quotaHit = true;
         }
-        return null;
-      };
+      } catch (e) {
+        const err = e?.message || "連線中斷";
+        if (!firstError) firstError = err;
+        if (err.includes("額度用盡")) quotaHit = true;
+      }
 
-      const winner = await new Promise((resolve) => {
-        let live = 1;            // 進行中的呼叫數
-        let resolved = false;
-        const onDone = (resp) => {
-          if (resolved) return;
-          if (resp) { resolved = true; resolve(resp); return; }
-          if (--live === 0) { resolved = true; resolve(null); }
-        };
-        attempt().then(onDone);
-        // 主呼叫拖太久 → 加送一份備援（使用者已停用就不送）
-        setTimeout(() => {
-          if (resolved || !active) return;
-          live++;
-          attempt().then(onDone);
-        }, HEDGE_MS);
-      });
-
-      if (!winner) return false;
-      if (winner.model) setPanelModel(winner.model);
-      const byId = new Map(winner.results.map((r) => [String(r.id), r.zh]));
+      if (!resp) return false;
+      if (resp.model) setPanelModel(resp.model);
+      const byId = new Map(resp.results.map((r) => [String(r.id), r.zh]));
       for (const idx of idxList) {
         const zh = byId.get(String(idx));
         cues[idx].zh = zh && String(zh).trim() ? String(zh) : cues[idx].text;
@@ -1285,13 +1284,11 @@
         let ok = await translateGroup(group);
         if (quotaHit) return; // 額度用盡 → 立刻收工，不拆半重試、不再拉新段落
         if (!ok && active) {
-          // codex 偶發會單次呼叫整個卡住、整組失敗 → 拆半並行重試：
-          // 較小的呼叫較不易卡，萬一仍有一半失敗也只影響半組。
+          // 整組失敗 → 拆半重試：較小的呼叫較不易卡。改「序列」而非並行 —— claude 等
+          // 重量級後端若並行兩個半組，又會重演「互相餓死、雙雙超時」；序列雖略慢但穩。
           const half = Math.ceil(group.length / 2);
-          const [a, b] = await Promise.all([
-            translateGroup(group.slice(0, half)),
-            translateGroup(group.slice(half))
-          ]);
+          const a = await translateGroup(group.slice(0, half));
+          const b = active ? await translateGroup(group.slice(half)) : false;
           ok = a && b;
         }
         if (!active) return;
@@ -1314,9 +1311,10 @@
       }
     }
 
-    // 並行 3 條 —— 不是越多越快：實測 codex 並行超過 3 會出現 straggler（某次
-    // 呼叫被拖到 2~3 倍慢），反而拖累整體完成（含緩衝備足的時間）→ 3 條為甜蜜點。
-    await Promise.all([worker(), worker(), worker()]);
+    // 並行 2 條(三後端一致)。搭配 groupCues 的字數上限：小群組單次 ~20-30s，2 併發也穩在
+    // 60s 內、不超時。先前的大群組才會在 2 併發下互相餓死、其中一個被 host 60s 砍 → 卡進度；
+    // 縮小群組後即解。無 hedge(見 translateGroup)，故同時最多 2 個 CLI 呼叫。
+    await Promise.all([worker(), worker()]);
     if (!active) return;
     resumePlayback(); // 保險：偵測若漏掉，全部翻完仍會恢復播放
 
@@ -1341,7 +1339,8 @@
 
   // 「重新翻譯」：套用目前模型重翻整支。清掉既有譯文(原生中文句保留)後重跑翻譯。
   // 因 SW 的 cache key 已含模型，切換模型後重翻會 cache miss → 取得新模型譯文；
-  // 模型未變則命中既有快取(等同沿用目前模型，預期一致)。不重抓字幕、不打斷播放(waiting 維持 false)。
+  // 模型未變則命中既有快取(等同沿用目前模型，預期一致)。不重抓字幕。
+  // 行為比照初次翻譯：enterWaiting() 暫停並跳回 0，集滿 PREROLL_SEC 緩衝後自動從頭播放。
   async function retranslate() {
     scheduleHideMenu();
     if (!active || !translationDone) return; // 僅翻完後可重翻(updateMenuState 已守門，雙保險)
@@ -1353,6 +1352,7 @@
     curIdx = -1;             // 強制重畫目前字幕
     transcriptBuiltFor = ""; // 面板下次開啟時用新譯文重建
     updateMenuState();       // 翻譯中 → 停用動作列、顯示進度
+    enterWaiting();          // 暫停並跳回 0；worker 集滿 PREROLL_SEC 緩衝後自動從頭播放
     await translateAllCues();
     // 重翻完成：面板若開著，用新譯文重建行並重新高亮目前句
     if (transcriptPanel && transcriptPanel.style.display !== "none") {
