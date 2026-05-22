@@ -47,6 +47,7 @@
   let menu = null;          // 子選單根元素
   let menuOpenRow = null;   // 「開啟」列
   let menuDownRow = null;   // 「下載」列
+  let menuRetransRow = null; // 「重新翻譯」列(套用目前模型重翻整支)
   let menuHint = null;      // 狀態提示行(未啟動/翻譯中)
   let menuHideTimer = null; // hover 離開後延遲收合計時器
   let transcriptPanel = null;  // 字幕面板根元素
@@ -57,6 +58,8 @@
   let autoScrolling = false;   // 程式化捲動中(用來區分使用者捲動)
   let lastUserScroll = 0;      // 上次使用者手動捲動的時間戳
   let transcriptSearch = null; // 字幕搜尋列(共用 search-box.js)
+  let panelModelTag = null;    // 面板 header 顯示「用哪個模型翻譯」
+  let lastModelLabel = "";     // 最近一次翻譯使用的模型標籤(面板開啟前先記著)
 
   let overlay = null;
   let box = null;
@@ -566,8 +569,9 @@
       return row;
     };
 
-    menuOpenRow = mkRow("開啟中英對照字幕", toggleTranscript);
-    menuDownRow = mkRow("下載中英對照 SRT", downloadSrt);
+    menuOpenRow = mkRow("開啟雙語對照字幕", toggleTranscript);
+    menuDownRow = mkRow("下載雙語對照 SRT", downloadSrt);
+    menuRetransRow = mkRow("重新翻譯", retranslate); // 文案於 showMenu 補上目前模型
 
     menuHint = document.createElement("div");
     Object.assign(menuHint.style, {
@@ -580,6 +584,7 @@
 
     menu.appendChild(menuOpenRow);
     menu.appendChild(menuDownRow);
+    menu.appendChild(menuRetransRow);
     menu.appendChild(menuHint);
 
     // 滑入選單 → 取消收合;離開 → 排程收合
@@ -602,7 +607,7 @@
   function updateMenuState() {
     if (!menu) return;
     const ready = active && translationDone;
-    for (const row of [menuOpenRow, menuDownRow]) {
+    for (const row of [menuOpenRow, menuDownRow, menuRetransRow]) {
       if (!row) continue;
       row.setAttribute("aria-disabled", ready ? "false" : "true");
       row.style.opacity = ready ? "1" : "0.4";
@@ -629,10 +634,25 @@
     menu.style.bottom = (pr.bottom - br.top + 8) + "px";
   }
 
+  // 「重新翻譯」文案補上目前設定會套用的模型(向 SW 查，標籤格式以 SW 為單一事實來源)。
+  // 顯示「目前」而非「上次翻譯」的模型：使用者剛在 options 改了模型、尚未重翻時，
+  // 這顆按鈕要明確標示按下去會用哪個模型。
+  async function refreshRetransLabel() {
+    if (!menuRetransRow) return;
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: "get-settings" });
+      const label = resp?.model || "";
+      menuRetransRow.textContent = label ? `重新翻譯（${label}）` : "重新翻譯";
+    } catch {
+      menuRetransRow.textContent = "重新翻譯"; // SW 不可用 → 退回純文案
+    }
+  }
+
   function showMenu() {
     if (!attachMenu()) return;
     clearTimeout(menuHideTimer);
     updateMenuState();
+    refreshRetransLabel(); // 每次開選單即時反映目前模型(設定可能在選單關閉時被改過)
     menu.style.display = "block";
     positionMenu();
   }
@@ -705,8 +725,30 @@
       cursor: "move",      // header = 拖曳把手
       userSelect: "none"
     });
+    // 左側群組：標題 + 模型標籤（header 用 space-between，故包成一組才不會被推散）
+    const left = document.createElement("span");
+    Object.assign(left.style, {
+      display: "flex",
+      alignItems: "baseline",
+      gap: "8px",
+      minWidth: "0",
+      overflow: "hidden"
+    });
     const title = document.createElement("span");
     title.textContent = "字幕";
+    panelModelTag = document.createElement("span");
+    panelModelTag.textContent = lastModelLabel; // 面板開啟前已翻過 → 顯示既有模型
+    Object.assign(panelModelTag.style, {
+      fontSize: "11px",
+      fontWeight: "400",
+      color: "#9aa0a6",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      minWidth: "0"
+    });
+    left.appendChild(title);
+    left.appendChild(panelModelTag);
     const closeBtn = document.createElement("span");
     closeBtn.textContent = "×";
     Object.assign(closeBtn.style, {
@@ -720,7 +762,7 @@
       e.stopPropagation();
       closeTranscript();
     });
-    header.appendChild(title);
+    header.appendChild(left);
     header.appendChild(closeBtn);
 
     // 抓 header 拖曳整個面板（點 × 不觸發）。記下的是視窗座標(getBoundingClientRect)，
@@ -1127,6 +1169,12 @@
     return groups;
   }
 
+  // 記住並（若面板已開）顯示這次翻譯用的模型。面板開啟前先存著，建面板時帶入。
+  function setPanelModel(model) {
+    lastModelLabel = model || "";
+    if (panelModelTag) panelModelTag.textContent = lastModelLabel;
+  }
+
   // 一段一段翻譯：每個小段落翻完就立刻更新顯示，不必等整支影片翻完。
   // 開頭的段落最先送、最先顯示；翻譯速度遠快於播放速度，後段會在播到前就備妥。
   async function translateAllCues() {
@@ -1221,6 +1269,7 @@
       });
 
       if (!winner) return false;
+      if (winner.model) setPanelModel(winner.model);
       const byId = new Map(winner.results.map((r) => [String(r.id), r.zh]));
       for (const idx of idxList) {
         const zh = byId.get(String(idx));
@@ -1288,6 +1337,30 @@
     }
     translationDone = true; // 含部分失敗也算完成(失敗句 zh 已回退原文)
     updateMenuState();
+  }
+
+  // 「重新翻譯」：套用目前模型重翻整支。清掉既有譯文(原生中文句保留)後重跑翻譯。
+  // 因 SW 的 cache key 已含模型，切換模型後重翻會 cache miss → 取得新模型譯文；
+  // 模型未變則命中既有快取(等同沿用目前模型，預期一致)。不重抓字幕、不打斷播放(waiting 維持 false)。
+  async function retranslate() {
+    scheduleHideMenu();
+    if (!active || !translationDone) return; // 僅翻完後可重翻(updateMenuState 已守門，雙保險)
+    for (const c of cues) {
+      if (!looksLikeChinese(c.text)) c.zh = null; // 待翻；中文句維持(start() 曾設 c.zh=c.text)
+    }
+    translationDone = false;
+    progressPct = 0;
+    curIdx = -1;             // 強制重畫目前字幕
+    transcriptBuiltFor = ""; // 面板下次開啟時用新譯文重建
+    updateMenuState();       // 翻譯中 → 停用動作列、顯示進度
+    await translateAllCues();
+    // 重翻完成：面板若開著，用新譯文重建行並重新高亮目前句
+    if (transcriptPanel && transcriptPanel.style.display !== "none") {
+      buildTranscriptRows();
+      const video = getVideo();
+      transcriptIdx = -1;
+      if (video) updateTranscriptHighlight(findCueIndex(video.currentTime));
+    }
   }
 
   // 顯示一段時間後淡出徽章 — completion / 失敗看一下就好，不長駐擋畫面

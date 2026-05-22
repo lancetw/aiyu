@@ -22,6 +22,7 @@
   // 譯文/原文排版：stack=上下(譯上原下，預設) | cols=左右並排(譯左原右)。記住跨開窗。
   let selLayout = localStorage.getItem("aiyu-sel-layout") === "cols" ? "cols" : "stack";
   let layoutBtn = null;
+  let modelTag = null; // 標題列顯示「用哪個模型翻譯」
 
   // Chrome 的 info.selectionText 會把換行替換成空白(crbug 116429) → 右鍵當下自行用
   // window.getSelection() 擷取(保留換行)，存起來供 sw 透過 aiyu-get-selection 取用。
@@ -158,6 +159,8 @@
     const title = document.createElement("span");
     title.className = "aiyu-bubble-title";
     title.textContent = "翻譯";
+    modelTag = document.createElement("span");
+    modelTag.className = "aiyu-bubble-model";
     layoutBtn = document.createElement("button");
     layoutBtn.className = "aiyu-bubble-fontbtn aiyu-bubble-layoutbtn";
     layoutBtn.addEventListener("click", () =>
@@ -178,7 +181,7 @@
     close.textContent = "×";
     close.title = "關閉";
     close.addEventListener("click", () => { bubble.style.display = "none"; });
-    header.append(title, layoutBtn, fontDown, fontUp, close);
+    header.append(title, modelTag, layoutBtn, fontDown, fontUp, close);
 
     // 只在按到標題列空白處或標題文字才拖曳(按按鈕不觸發)。記視窗座標，與 fixed 同基準。
     header.addEventListener("mousedown", (e) => {
@@ -283,6 +286,7 @@
 
   function showSelectionLoading() {
     openWindow();
+    if (modelTag) modelTag.textContent = ""; // 翻譯中模型未知，先清掉上次的標籤
     const wrap = document.createElement("span");
     wrap.className = "aiyu-loading-inline";
     const label = document.createElement("span");
@@ -298,8 +302,9 @@
     setBody(wrap, "loading");
   }
 
-  function showSelectionResult(original, zh) {
+  function showSelectionResult(original, zh, model) {
     openWindow();
+    if (modelTag) modelTag.textContent = model || "";
     const wrap = document.createElement("div");
     wrap.className = "aiyu-bubble-pair" + (selLayout === "cols" ? " cols" : "");
     const t = document.createElement("div");
@@ -359,7 +364,7 @@
       return;
     }
     if (msg?.type === "aiyu-show-selection") {
-      showSelectionResult(msg.original, msg.zh);
+      showSelectionResult(msg.original, msg.zh, msg.model);
       sendResponse({ ok: true });
       return;
     }

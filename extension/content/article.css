@@ -145,6 +145,18 @@
   opacity: 0.85;
 }
 
+.aiyu-bubble-model {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #888;
+  opacity: 0.9;
+  padding: 0 4px;
+}
+
 .aiyu-bubble-fontbtn {
   border: none;
   background: transparent;

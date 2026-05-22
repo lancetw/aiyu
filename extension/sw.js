@@ -28,10 +28,29 @@ function cacheSet(key, zh) {
   cache.set(key, { zh, ts: Date.now() });
 }
 
-function makeKey(text, target, style, context) {
+function makeKey(text, target, style, context, backend) {
   // context 入 key：同一段文字在不同情境（口譯／翻譯記者）會有不同譯法，
   // 不含 context 會讓先翻的情境污染後翻的情境（拿到錯人格的快取）。
-  return `${target}|${style}|${context}|${text}`;
+  // backend(=cli:model) 入 key 同理：不同模型/後端譯法不同，切換模型後同段文字
+  // 應重新翻譯而非命中舊模型快取；切回舊模型則仍能命中其既有快取。
+  return `${backend}|${target}|${style}|${context}|${text}`;
+}
+
+// 由設定推出實際模型：agy（Antigravity）由帳號端自動路由、print 模式無法指定 → null。
+function resolveModel(settings) {
+  return settings.cli === "codex" ? settings.codexModel
+    : settings.cli === "claude" ? settings.claudeModel
+    : null;
+}
+
+// 給使用者看的「翻譯用模型」標籤：後端 · 模型（agy 由帳號端路由、無模型 → 只顯示後端名）。
+function modelLabel(cli, model) {
+  const name =
+    cli === "codex" ? "Codex"
+    : cli === "claude" ? "Claude"
+    : cli === "agy" ? "Antigravity"
+    : (cli || "");
+  return model ? `${name} · ${model}` : name;
 }
 
 function ensurePort() {
@@ -113,22 +132,24 @@ async function getSettings() {
 
 async function translateBatch(segments, settings, context) {
   // segments: [{id, text}]；context: "youtube" | "selection" 等，決定 host 端譯者人格
+  const model = resolveModel(settings);
+  // backend 入 key，使切換模型/後端後同段文字重新翻譯（見 makeKey）。
+  const backend = `${settings.cli}:${model ?? ""}`;
+
   const out = new Array(segments.length);
   const need = [];
   segments.forEach((s, i) => {
-    const k = makeKey(s.text, settings.target, settings.style, context);
+    const k = makeKey(s.text, settings.target, settings.style, context, backend);
     const hit = cacheGet(k);
     if (hit !== null) out[i] = { id: s.id, zh: hit, cached: true };
     else need.push({ idx: i, seg: s, key: k });
   });
 
-  if (need.length === 0) return out;
+  if (need.length === 0) {
+    // 全部命中快取：因 key 已含 backend，命中者必為當前模型所譯 → 標籤即當前模型。
+    return { results: out, model: modelLabel(settings.cli, model) };
+  }
 
-  // agy（Antigravity）模型由帳號端自動路由、無法在 print 模式指定 → 不帶 model
-  const model =
-    settings.cli === "codex" ? settings.codexModel
-    : settings.cli === "claude" ? settings.claudeModel
-    : null;
   const { result, meta } = await callHost("translate", {
     cli: settings.cli,
     model,
@@ -140,8 +161,13 @@ async function translateBatch(segments, settings, context) {
     segments: need.map((n) => ({ id: n.seg.id, text: n.seg.text }))
   });
 
+  // 預設標籤為使用者要求的模型；若 host fallback 到別的 CLI，改記實際使用的後端。
+  let usedCli = settings.cli;
+  let usedModel = model;
   // 若 host 自動 fallback 到別的 CLI，把使用者偏好同步成實際可用的
   if (meta?.fellBack && meta?.usedCli) {
+    usedCli = meta.usedCli;
+    usedModel = null; // fallback 後 host 用對方 CLI 的預設模型，名稱未知 → 只顯示後端名
     try {
       await chrome.storage.sync.set({ cli: meta.usedCli });
     } catch {}
@@ -154,7 +180,7 @@ async function translateBatch(segments, settings, context) {
     cacheSet(n.key, zh);
     out[n.idx] = { id: n.seg.id, zh };
   }
-  return out;
+  return { results: out, model: modelLabel(usedCli, usedModel) };
 }
 
 // ----- Context Menus -----
@@ -204,7 +230,7 @@ chrome.runtime.onStartup.addListener(() => { ensureMenus(); });
 async function translateSelection(text, tabId, frameId) {
   if (!text || !text.trim()) return;
   const settings = await getSettings();
-  const results = await translateBatch(
+  const { results, model } = await translateBatch(
     [{ id: "sel", text: text.trim() }],
     settings,
     "selection"
@@ -213,7 +239,7 @@ async function translateSelection(text, tabId, frameId) {
   try {
     await chrome.tabs.sendMessage(
       tabId,
-      { type: "aiyu-show-selection", original: text, zh },
+      { type: "aiyu-show-selection", original: text, zh, model },
       frameId != null ? { frameId } : undefined
     );
   } catch {
@@ -320,13 +346,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     try {
       if (msg.type === "translate") {
         const settings = await getSettings();
-        const results = await translateBatch(msg.segments, settings, msg.context);
-        sendResponse({ ok: true, results });
+        const { results, model } = await translateBatch(msg.segments, settings, msg.context);
+        sendResponse({ ok: true, results, model });
       } else if (msg.type === "ping-host") {
         const r = await callHost("ping", {}, 15000);
         sendResponse({ ok: true, info: r.result });
       } else if (msg.type === "get-settings") {
-        sendResponse({ ok: true, settings: await getSettings() });
+        const settings = await getSettings();
+        // model：目前設定會套用的模型標籤（供 UI 顯示「按下去會用哪個模型」）。
+        sendResponse({ ok: true, settings, model: modelLabel(settings.cli, resolveModel(settings)) });
       } else if (msg.type === "clear-cache") {
         cache.clear();
         sendResponse({ ok: true });
@@ -339,3 +367,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   })();
   return true; // async
 });
+
+// node 測試用：瀏覽器/SW 環境無 module，故守衛匯出純邏輯供 test/ 載入，不影響執行。
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { translateBatch, makeKey };
+}
