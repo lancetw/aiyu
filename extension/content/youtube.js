@@ -1134,15 +1134,6 @@
     }
   }
 
-  function looksLikeChinese(s) {
-    let cjk = 0;
-    for (const ch of s) {
-      const c = ch.codePointAt(0);
-      if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3400 && c <= 0x4dbf)) cjk++;
-    }
-    return cjk / Math.max(s.length, 1) > 0.2;
-  }
-
   // ---------- translation ----------
 
   // 對 SW 發 translate 請求，並加上前端逾時防線。
@@ -1341,16 +1332,14 @@
     updateMenuState();
   }
 
-  // 「重新翻譯」：套用目前模型重翻整支。清掉既有譯文(原生中文句保留)後重跑翻譯。
+  // 「重新翻譯」：套用目前模型重翻整支。清掉既有譯文後重跑翻譯。
   // 因 SW 的 cache key 已含模型，切換模型後重翻會 cache miss → 取得新模型譯文；
   // 模型未變則命中既有快取(等同沿用目前模型，預期一致)。不重抓字幕。
   // 行為比照初次翻譯：enterWaiting() 暫停並跳回 0，集滿 PREROLL_SEC 緩衝後自動從頭播放。
   async function retranslate() {
     scheduleHideMenu();
     if (!active || !translationDone) return; // 僅翻完後可重翻(updateMenuState 已守門，雙保險)
-    for (const c of cues) {
-      if (!looksLikeChinese(c.text)) c.zh = null; // 待翻；中文句維持(start() 曾設 c.zh=c.text)
-    }
+    for (const c of cues) c.zh = null; // 全部標為待翻：重翻就是重翻整支
     translationDone = false;
     progressPct = 0;
     curIdx = -1;             // 強制重畫目前字幕
@@ -1524,8 +1513,6 @@
         return;
       }
       computeEnds();
-      // 字幕本身已是中文的句子不必翻
-      for (const c of cues) if (looksLikeChinese(c.text)) c.zh = c.text;
 
       // 暫停並跳回開頭，等開頭那批翻好再自動播 — 否則翻譯太慢，翻好時已播過開頭。
       // 只在這支影片的第一次翻譯這樣做；重譯同一支影片則略過(waiting 保持 false →
