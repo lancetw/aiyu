@@ -27,7 +27,7 @@
     },
     {
       "matches": ["*://*.youtube.com/*"],
-      "js": ["content/search-box.js", "content/youtube.js"],
+      "js": ["content/search-box.js", "content/translate-scheduler.js", "content/youtube.js"],
       "run_at": "document_idle"
     },
     {

@@ -44,6 +44,7 @@
   let badgeLabel = "";
   let translationDone = false; // 整支翻完才為 true → 子選單動作項才啟用
   let progressPct = 0;         // 翻譯進度 %，給子選單「翻譯中 X%」提示用
+  let unresolvedCues = [];     // 重試耗盡仍未譯的 cue index（點徽章可手動重試；非空＝未完成）
   let menu = null;          // 子選單根元素
   let menuOpenRow = null;   // 「開啟」列
   let menuDownRow = null;   // 「下載」列
@@ -283,18 +284,30 @@
   }
 
   // 右上角徽章 — 靜態訊息（完成 / 失敗等固定字串）。會先停掉進度動畫。
-  function setBadge(text, kind) {
+  // onClick 有給 → 徽章可點擊（用於「點此重試」），否則維持點擊穿透。
+  function setBadge(text, kind, onClick) {
     stopBadgeAnim();
     if (!attachOverlay()) return;
     const bd = ensureBadge();
+    bd.onclick = null;
     if (!text) {
       bd.style.display = "none";
+      bd.style.pointerEvents = "none";
+      bd.style.cursor = "";
       return;
     }
     bd.style.display = "inline-block";
     bd.style.opacity = "1";
     bd.textContent = text;
     paintBadge(bd, kind);
+    if (typeof onClick === "function") {
+      bd.style.pointerEvents = "auto";
+      bd.style.cursor = "pointer";
+      bd.onclick = (e) => { e.stopPropagation(); onClick(); };
+    } else {
+      bd.style.pointerEvents = "none";
+      bd.style.cursor = "";
+    }
   }
 
   // 右上角徽章 — 動態進度。spinner 持續轉動，即使進度數字暫時沒變，
@@ -1152,25 +1165,28 @@
   // 對 SW 發 translate 請求，並加上前端逾時防線。
   // MV3 service worker 閒置約 30s 就被回收；若它在等 CLI 回應時被回收，
   // 回應遺失、sendMessage 的 Promise 永不 resolve → worker 永遠卡住、進度停在 0。
-  // SW 端已有 keepAlive，這裡再加一道前端逾時：萬一仍卡住，逾時後拋錯，
-  // worker 會把該段標成原文、繼續下一段，不會整支影片卡死。
+  // SW 端已有 keepAlive，這裡再加一道前端逾時：萬一仍卡住，逾時後拋錯 →
+  // translateGroup 視為整組失敗 → scheduler 重新入列、優先重試（不會無聲漏譯）。
   function sendTranslate(segments) {
     return Promise.race([
       chrome.runtime.sendMessage({ type: "translate", segments, context: "youtube" }),
+      // 340s：撐過 host 全後端 300s 上限 + SW 320s，讓 host 先逾時並回乾淨訊息，
+      // 而非前端先誤判逾時。三層階梯：host 300s < SW 320s < 此處 340s。
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("翻譯回應逾時")), 110000)
+        setTimeout(() => reject(new Error("翻譯回應逾時")), 340000)
       )
     ]);
   }
 
   // 把待翻譯的 cue 切成「段落」，每段是一次 CLI 呼叫的單位。
   // 用「字數」而非「句數」分組：單次 CLI 呼叫的延遲取決於 prompt/輸出大小，而字幕疏密差很多
-  // (短片段 vs 長句) → 只有字數上限能穩定壓住每次呼叫時間。實測 claude haiku：2 併發、
-  // 群組 prompt ~3300 約 23-32s 穩定完成；群組過大(prompt ~6500)其中一個會被拖過 host
-  // 60s 上限被 SIGKILL → 卡進度。故壓小群組、保守留餘裕(瀏覽器播放佔 CPU、claude 變異大)。
+  // (短片段 vs 長句) → 只有字數上限能穩定壓住每次呼叫時間。
+  // 群組調小（全後端）：實測 Opus 對大 prompt 延遲超線性（prompt ~3400→5s、~5900→114s），
+  // 小群組 → 每次呼叫更短更快、進度更平滑、2 併發更有效。逾時已放寬到 300s，故縮小群組
+  // 是為了「速度與體感」而非「避免 SIGKILL」。
   function groupCues(idxList) {
-    const SOFT_CHARS = 800;  // 達此且句尾 → 收尾(對齊句界，譯文較完整)
-    const HARD_CHARS = 1200; // 硬上限：壓住單次 prompt 大小，確保 2 併發也穩在 60s 內
+    const SOFT_CHARS = 400;  // 達此且句尾 → 收尾(對齊句界，譯文較完整)
+    const HARD_CHARS = 600;  // 硬上限：壓住單次 prompt 大小 → 每次呼叫更快、進度更平滑
     const groups = [];
     let cur = [];
     let chars = 0;
@@ -1203,61 +1219,45 @@
     });
     if (!todoIdx.length) {
       setBadge("");
+      unresolvedCues = [];
       translationDone = true;
       updateMenuState();
       resumePlayback(); // 全部本來就是中文 → 無需等待，直接從頭播
       return;
     }
 
-    const groups = groupCues(todoIdx);
-    const taken = new Array(groups.length).fill(false);
+    // 每組最多嘗試幾次才轉 exhausted。host 對 claude 已放寬到 300s，逾時極罕見 → 失敗多為
+    // 瞬時（限流／偶發漏段），數次重試足以救回；耗盡才大聲標示、交給使用者手動重試。
+    const RETRY_CAP = 5;
+    const RETRY_BACKOFF_MS = 1500; // 失敗後稍候再續，避免連敲被限流的後端
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // 群組帶上時間範圍 → scheduler 依播放位置排序、且失敗群組「優先」重排。
+    const idxGroups = groupCues(todoIdx);
+    const groupObjs = idxGroups.map((idxs) => ({
+      idxs,
+      start: cues[idxs[0]].start,
+      end: cues[idxs[idxs.length - 1]].end || cues[idxs[0]].start + 1
+    }));
+    const scheduler = aiyuCreateScheduler(groupObjs, { retryCap: RETRY_CAP });
     const total = todoIdx.length;
-    let done = 0;
-    let failed = 0;
     let firstError = "";
     let quotaHit = false; // 偵測到額度用盡 → 立刻中止整輪，不再連敲已鎖額度的 CLI
     progressPct = 0;
+    // 已拿到「真譯文」的句數（exhausted 回退原文是收尾時才設，迴圈中 zh!==null ⟺ 真譯文）
+    const realDone = () => todoIdx.reduce((a, i) => a + (cues[i].zh !== null ? 1 : 0), 0);
+
     // 第一批翻好前顯示「連接 <模型> 中…」而非「翻譯中 0%」：claude 首呼叫要十幾~數十秒，
     // 0% 久不動會像當機，明講「正在連接哪個模型」較不焦慮。
     const model = await fetchModelLabel();
     setBadgeProgress(model ? `連接 ${model} 模型中…` : "連接模型中…");
     updateMenuState();
 
-    // 挑下一個要翻的段落 —— 不照固定順序，而是優先翻「使用者目前播放位置」
-    // 所在 / 前方最近的段落。每當有 worker 空出來就重新評估，所以使用者中途
-    // 跳轉(seek)後，接下來會自動改翻新位置 —— 跳到哪、那一段就最快有字幕。
-    function pickGroup() {
-      const video = getVideo();
-      const t = video ? video.currentTime : 0;
-      let best = -1;
-      let bestScore = Infinity;
-      for (let i = 0; i < groups.length; i++) {
-        if (taken[i]) continue;
-        const g = groups[i];
-        const gStart = cues[g[0]].start;
-        const gEnd = cues[g[g.length - 1]].end || gStart + 1;
-        let score;
-        if (t >= gStart && t < gEnd) score = 0;       // 播放點就在此段內 → 最優先
-        else if (gStart >= t) score = gStart - t;      // 在播放點前方 → 越近越先翻
-        else score = (t - gEnd) * 3 + 100000;          // 已播過 → 大幅延後（仍會翻）
-        if (score < bestScore) {
-          bestScore = score;
-          best = i;
-        }
-      }
-      if (best < 0) return null;
-      taken[best] = true;
-      return groups[best];
-    }
-
-    // 送一組 cue 去翻譯並套用結果；成功回 true。一組 = 一次 CLI 呼叫。
-    // 不做 hedge（先前：呼叫逾 20s 未回就並送一份備援）。claude 等 CLI 每次有
-    // ~20s 固定開銷（實測：1 句 24.8s、40 句 19.5s，幾乎與批次大小無關），
-    // 會讓 20s 的 hedge 幾乎每次必觸發 → 併發翻倍、多個重量級行程互搶資源 →
-    // 撞 host 60s 上限被 SIGKILL → 進度卡死。實測單次/2 併發 claude 都 < 60s，
-    // 移除 hedge 即解；偶發整組失敗仍由 worker 的「拆半重試」兜底。
+    // 送一組 cue 去翻譯，只寫「真譯文」（SW 已把漏回／空標成 zh:null）；未譯的 idx 維持 null
+    // （畫面續顯示「翻譯中…」），交由 scheduler 重試。回 { ok, failedIdxs }。重試整組時，
+    // 已翻好的句子會命中 SW 快取、不重打 CLI，只重打仍缺的句子。
     async function translateGroup(idxList) {
-      if (!idxList.length) return true;
+      if (!idxList.length) return { ok: true, failedIdxs: [] };
       const segments = idxList.map((idx) => ({ id: String(idx), text: cues[idx].text }));
 
       let resp = null;
@@ -1275,74 +1275,93 @@
         if (err.includes("額度用盡")) quotaHit = true;
       }
 
-      if (!resp) return false;
+      if (!resp) return { ok: false, failedIdxs: idxList.slice() };
       if (resp.model) setPanelModel(resp.model);
       const byId = new Map(resp.results.map((r) => [String(r.id), r.zh]));
+      const failedIdxs = [];
       for (const idx of idxList) {
         const zh = byId.get(String(idx));
-        cues[idx].zh = zh && String(zh).trim() ? String(zh) : cues[idx].text;
+        // 非空字串才算真譯文；其餘（漏回 → undefined、SW 標的 null、空白）維持 null 待重試。
+        if (zh != null && String(zh).trim()) cues[idx].zh = String(zh);
+        else failedIdxs.push(idx);
       }
-      return true;
+      return { ok: failedIdxs.length === 0, failedIdxs };
     }
 
+    // 並行 2 條。scheduler 保證：失敗群組優先重排、重試到上限才放棄（永不無聲當作完成）。
     async function worker() {
       while (active && !quotaHit) {
-        const group = pickGroup();
-        if (!group) return;
-        let ok = await translateGroup(group);
-        if (quotaHit) return; // 額度用盡 → 立刻收工，不拆半重試、不再拉新段落
-        if (!ok && active) {
-          // 整組失敗 → 拆半重試：較小的呼叫較不易卡。改「序列」而非並行 —— claude 等
-          // 重量級後端若並行兩個半組，又會重演「互相餓死、雙雙超時」；序列雖略慢但穩。
-          const half = Math.ceil(group.length / 2);
-          const a = await translateGroup(group.slice(0, half));
-          const b = active ? await translateGroup(group.slice(half)) : false;
-          ok = a && b;
+        const video = getVideo();
+        const t = video ? video.currentTime : 0;
+        const gi = scheduler.pickNext(t);
+        if (gi === -1) {
+          // 無可挑：若另一 worker 仍在處理（可能失敗回 pending）就稍候再看；否則收工。
+          if (scheduler.status().inflight > 0) { await sleep(250); continue; }
+          return;
         }
+        const { ok } = await translateGroup(groupObjs[gi].idxs);
+        if (quotaHit) return; // 額度用盡 → 立刻收工
+        scheduler.record(gi, ok);
         if (!active) return;
-        if (!ok) {
-          failed++;
-          // 仍沒翻到的 cue 顯示原文，不要讓它一直卡在「翻譯中…」
-          for (const idx of group) if (cues[idx].zh === null) cues[idx].zh = cues[idx].text;
-        }
-        done += group.length;
-        curIdx = -1; // 這組翻好了 → 立刻重畫目前字幕
-        // 緩衝足夠才從頭自動播放：開頭起連續翻好的字幕需覆蓋 ≥ PREROLL_SEC 秒，
-        // 播放才不易追上翻譯前線。等待期 pickGroup 以 t=0 為中心 → 自然先補開頭。
-        // 翻譯失敗時 worker 會把 zh 設成原文 → lead 仍會推進、不會卡死。
+        curIdx = -1; // 可能剛翻好 → 立刻重畫目前字幕
+        if (!ok) await sleep(RETRY_BACKOFF_MS); // 失敗後退避；下一輪 pickNext 會優先重挑此組
+        // 緩衝足夠才從頭自動播放：開頭起連續翻好的字幕需覆蓋 ≥ PREROLL_SEC 秒。
         if (waiting && leadSeconds() >= PREROLL_SEC) resumePlayback();
-        if (active && done < total) {
-          progressPct = Math.round((done / total) * 100);
+        const rd = realDone();
+        if (active && rd < total) {
+          progressPct = Math.round((rd / total) * 100);
           setBadgeProgress(`翻譯中 ${progressPct}%`);
           updateMenuState();
         }
       }
     }
 
-    // 並行 2 條(三後端一致)。搭配 groupCues 的字數上限：小群組單次 ~20-30s，2 併發也穩在
-    // 60s 內、不超時。先前的大群組才會在 2 併發下互相餓死、其中一個被 host 60s 砍 → 卡進度；
-    // 縮小群組後即解。無 hedge(見 translateGroup)，故同時最多 2 個 CLI 呼叫。
     await Promise.all([worker(), worker()]);
     if (!active) return;
-    resumePlayback(); // 保險：偵測若漏掉，全部翻完仍會恢復播放
 
     // 診斷：印出實際錯誤字串，方便判斷是否被正確辨識為「額度用盡」
     if (firstError) console.warn("[aiyu] 翻譯結束有錯誤，firstError =", JSON.stringify(firstError));
+
     if (quotaHit) {
-      // 額度用盡是「需使用者處理」的狀態 → 右上角持續顯示、不自動淡出。
+      // 額度用盡：右上角持續顯示、不自動淡出。未譯 cue 維持 null（不回退原文鎖死成英文），
+      // 額度恢復後可用選單「重新翻譯」或下次啟動補回。
+      unresolvedCues = todoIdx.filter((i) => cues[i].zh === null);
       setBadge("⚠ 翻譯額度用盡，請稍後再試", "error");
-    } else if (failed >= groups.length) {
-      setBadge("⚠ 翻譯失敗", "error");
-      flashDoneBadge(8000);
-    } else if (failed > 0) {
-      setBadge("⚠ 部分未翻譯", "error");
-      flashDoneBadge(6000);
     } else {
-      setBadge("✓ 翻譯完成", "done");
-      flashDoneBadge(4000);
+      const unresolved = todoIdx.filter((i) => cues[i].zh === null);
+      if (unresolved.length) {
+        // 終局仍有未譯：大聲、持續、可點擊重試。未譯 cue 先回退原文顯示（可讀），但整體狀態
+        // 明確「未完成」（徽章不淡出＋提供手動重試）—— 絕不偽裝成 ✓ 完成而靜默漏譯。
+        unresolvedCues = unresolved.slice();
+        for (const i of unresolved) cues[i].zh = cues[i].text;
+        curIdx = -1;
+        setBadge(`⚠ ${unresolved.length} 句未翻譯，點此重試`, "error", retryUnresolved);
+      } else {
+        unresolvedCues = [];
+        setBadge("✓ 翻譯完成", "done");
+        flashDoneBadge(4000);
+      }
     }
-    translationDone = true; // 含部分失敗也算完成(失敗句 zh 已回退原文)
+    resumePlayback(); // 保險：偵測若漏掉仍恢復播放
+    translationDone = true; // 完成（含部分未譯）：選單動作可用；未譯狀態由徽章持續標示
     updateMenuState();
+  }
+
+  // 點「⚠ N 句未翻譯」徽章：把未譯 cue 清回待翻、原地重跑翻譯（不暫停、不跳回開頭）。
+  // SW 已快取的真譯文不重打，只重打仍缺的句子。
+  async function retryUnresolved() {
+    if (!active || !unresolvedCues.length) return;
+    const retry = unresolvedCues.slice();
+    unresolvedCues = [];
+    for (const i of retry) cues[i].zh = null;
+    curIdx = -1;
+    await translateAllCues();
+    if (transcriptPanel && transcriptPanel.style.display !== "none") {
+      buildTranscriptRows();
+      const video = getVideo();
+      transcriptIdx = -1;
+      if (video) updateTranscriptHighlight(findCueIndex(video.currentTime));
+    }
   }
 
   // 「重新翻譯」：套用目前模型重翻整支。清掉既有譯文後重跑翻譯。
@@ -1455,7 +1474,7 @@
   }
 
   // 進入等待期：暫停並跳回影片最開頭，字幕框顯示「請耐心等候」。
-  // seek 到 0 也讓 pickGroup() 以 currentTime=0 為中心，自然最先翻開頭那一批。
+  // seek 到 0 也讓 scheduler.pickNext() 以 currentTime=0 為中心，自然最先翻開頭那一批。
   function enterWaiting() {
     waiting = true;
     const video = getVideo();
@@ -1493,6 +1512,7 @@
     cues = [];
     translationDone = false;
     progressPct = 0;
+    unresolvedCues = [];
     transcriptBuiltFor = "";
     clearTimeout(doneFlashTimer);
     updateButton();
@@ -1554,6 +1574,7 @@
     cues = [];
     curIdx = -1;
     translationDone = false;
+    unresolvedCues = [];
     closeTranscript();
     transcriptBuiltFor = "";
     transcriptIdx = -1;

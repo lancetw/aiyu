@@ -11,9 +11,13 @@ const fs = require("fs");
 const os = require("os");
 
 const HOST_VERSION = "0.3.0";
-// 單次 codex/claude 呼叫上限。實測健康呼叫約 10-20s；codex 偶發會整個卡住，
-// 120s 太久會凍住一整組字幕 → 設 60s，卡住的呼叫及早失敗、交給前端拆半重試。
-const SPAWN_TIMEOUT_MS = 60_000;
+// 單次 CLI 呼叫上限：全後端統一 300s。健康呼叫遠低於此（claude ~24s、codex ~15s），
+// 300s 幾乎只有真正卡死/中斷/伺服器負載或額度退避拉長時才觸發 → 不再誤砍正在正常工作的
+// 呼叫。偶發失敗（含 codex 罕見的「整個卡住」）由前端 scheduler 優先重試、bounded 後大聲
+// 標示兜底，不會無聲漏譯。
+// timeout 階梯（外層必須比內層寬，否則外層先砍、host 放寬白做）：
+//   host(本檔 300s) < SW callHost(320s) < 前端 sendTranslate(340s)。
+const SPAWN_TIMEOUT_MS = 300_000;
 // log 寫在腳本同目錄 — Chrome 啟動的是安裝副本（~/Library/Application Support/aiyu/），
 // 該目錄 TCC 可寫；smoke test 從 repo 跑則寫在 host/。
 const LOG_FILE = process.env.AIYU_LOG || path.join(__dirname, "aiyu-host.log");
@@ -93,6 +97,17 @@ function buildPrompt({ target, style, glossary, customPrompt, segments, context 
 
   const customBlock = customPrompt ? `額外指示：\n${customPrompt}` : "";
 
+  // 台灣在地化用詞：一句指示＋高頻錨點，靠模型自身知識類推其餘 —— 用來取代沉重的詞庫
+  //（啟用詞庫每次呼叫多扛 ~2300 字、Opus 超線性變慢）。使用者可關閉詞庫、改靠這段。
+  // 僅 zh-TW 適用；其他目標語言不加（filter(Boolean) 會自然濾掉空字串）。
+  const taiwanTermNote =
+    target === "zh-TW"
+      ? "用詞在地化：一律採台灣慣用的資訊科技與日常譯詞，避免對岸用語。例如：" +
+        "優化→最佳化、軟件→軟體、硬件→硬體、數據→資料、文件→檔案、程序→程式、" +
+        "函數→函式、默認→預設、緩存→快取、視頻→影片、網絡→網路、信息→資訊、" +
+        "服務器→伺服器、用戶→使用者、質量→品質、性能→效能。未列出的詞亦比照（採台灣慣用語）。"
+      : "";
+
   // 依情境切換譯者人格：YouTube 字幕＝「聽人說話」→ 即時口譯；
   // 其餘（選取文字／網頁書面文字）＝「讀書面內容」→ 翻譯記者（編譯）。
   const isSubtitle = context === "youtube";
@@ -136,7 +151,7 @@ function buildPrompt({ target, style, glossary, customPrompt, segments, context 
     "5. 嚴格只輸出 JSON 陣列，格式：[{\"id\":\"...\",\"zh\":\"...\"}]，無任何前後文字、無 markdown 程式碼框。"
   ].join("\n");
 
-  const system = [persona, styleNote, principles, rules, glossaryBlock, customBlock]
+  const system = [persona, styleNote, principles, rules, taiwanTermNote, glossaryBlock, customBlock]
     .filter(Boolean)
     .join("\n\n");
 

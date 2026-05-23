@@ -122,6 +122,19 @@ async function getSettings() {
   return d;
 }
 
+// 把 host 回傳對回 need：每筆明確標記是否「真譯文」。host 漏回某 id 或回空字串/空白
+// （限流、輸出截斷、模型漏段時會發生）→ real:false、zh:null —— 絕不偽裝成原文。
+// 純函式、無快取副作用 → 可單獨測試（test/sw-merge-results.test.js）。real 旗標讓上層
+// （youtube worker）精準分辨「真譯文 vs 未翻譯」，據此重試而非靜默漏譯。
+function mergeHostResults(need, result) {
+  const byId = new Map((result || []).map((r) => [r.id, r.zh]));
+  return need.map((n) => {
+    const got = byId.get(n.seg.id);
+    const real = got != null && String(got).trim() !== "";
+    return { idx: n.idx, id: n.seg.id, key: n.key, zh: real ? String(got) : null, real };
+  });
+}
+
 async function translateBatch(segments, settings, context) {
   // segments: [{id, text}]；context: "youtube" | "selection" 等，決定 host 端譯者人格
   const model = resolveModel(settings);
@@ -133,7 +146,7 @@ async function translateBatch(segments, settings, context) {
   segments.forEach((s, i) => {
     const k = makeKey(s.text, settings.target, settings.style, context, backend);
     const hit = cacheGet(k);
-    if (hit !== null) out[i] = { id: s.id, zh: hit, cached: true };
+    if (hit !== null) out[i] = { id: s.id, zh: hit, cached: true, real: true };
     else need.push({ idx: i, seg: s, key: k });
   });
 
@@ -142,6 +155,9 @@ async function translateBatch(segments, settings, context) {
     return { results: out, model: modelLabel(settings.cli, model) };
   }
 
+  // timeout 320s：必須 > host 全後端 300s 上限，host 才會先逾時並回乾淨訊息
+  //（CLI timeout／額度用盡），而非 SW 先誤判逾時。三層階梯：
+  // host 300s < SW 320s < 前端 sendTranslate 340s。
   const { result, meta } = await callHost("translate", {
     cli: settings.cli,
     model,
@@ -152,7 +168,7 @@ async function translateBatch(segments, settings, context) {
     // opt-in：未啟用就送空詞庫，host 端 buildPrompt 收到空陣列自然不組 glossaryBlock。
     glossary: settings.glossaryEnabled ? settings.glossary : [],
     segments: need.map((n) => ({ id: n.seg.id, text: n.seg.text }))
-  });
+  }, 320000);
 
   // 預設標籤為使用者要求的模型；若 host fallback 到別的 CLI，改記實際使用的後端。
   let usedCli = settings.cli;
@@ -166,15 +182,14 @@ async function translateBatch(segments, settings, context) {
     } catch {}
   }
 
-  // result: [{id, zh}]
-  const byId = new Map(result.map((r) => [r.id, r.zh]));
-  for (const n of need) {
-    const got = byId.get(n.seg.id);
-    const real = got != null && String(got).trim() !== "";
-    // 只快取「真實譯文」。host 漏回或回空(CLI 限流、輸出截斷時會發生)→ 回退原文顯示，
-    // 但不快取回退值：否則把英文原文/空字串當成譯文鎖進快取，限流恢復後重翻也拿不到中文。
-    if (real) cacheSet(n.key, String(got));
-    out[n.idx] = { id: n.seg.id, zh: real ? String(got) : n.seg.text };
+  // result: [{id, zh}] → 標明每筆是否真譯文（漏回/空 → real:false, zh:null，不偽裝原文）。
+  const merged = mergeHostResults(need, result);
+  for (const m of merged) {
+    // 只快取真譯文：host 漏回/回空(限流、輸出截斷)不快取回退值，否則把原文/空字串鎖進快取，
+    // 限流恢復後重翻也拿不到中文。
+    if (m.real) cacheSet(m.key, m.zh);
+    // zh:null 明確代表「未翻譯」→ 交由上層 youtube worker 重試；selection 則回退原文顯示。
+    out[m.idx] = { id: m.id, zh: m.real ? m.zh : null, real: m.real };
   }
   return { results: out, model: modelLabel(usedCli, usedModel) };
 }
@@ -231,7 +246,8 @@ async function translateSelection(text, tabId, frameId) {
     settings,
     "selection"
   );
-  const zh = results?.[0]?.zh || "";
+  // 選取翻譯是一次性、無重試迴圈：未譯(zh:null)就回退顯示原文，至少不給空白氣泡。
+  const zh = results?.[0]?.zh || text;
   try {
     await chrome.tabs.sendMessage(
       tabId,
@@ -270,7 +286,7 @@ async function ensureContentScripts(tab) {
   if (!/^(https?|file):\/\//.test(url)) return false;
   const isYouTube = /^https?:\/\/[^/]*\.?youtube\.com\//.test(url);
   const files = isYouTube
-    ? ["content/youtube.js", "content/article.js"]
+    ? ["content/translate-scheduler.js", "content/youtube.js", "content/article.js"]
     : ["content/article.js"];
   try {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
@@ -366,5 +382,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // node 測試用：瀏覽器/SW 環境無 module，故守衛匯出純邏輯供 test/ 載入，不影響執行。
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { translateBatch, makeKey };
+  module.exports = { translateBatch, makeKey, mergeHostResults };
 }
