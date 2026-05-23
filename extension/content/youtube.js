@@ -1,6 +1,6 @@
 // aiyu YouTube caption translator — 預先翻譯 + 時間軸同步版
 //
-// 由 YouTube 播放列上注入的「譯」按鈕啟動 / 關閉（按鈕一定在播放器建好後才出現，
+// 由 YouTube 播放列上注入的aiyu 按鈕啟動 / 關閉（按鈕一定在播放器建好後才出現，
 // 因此點下去時 videoId 與播放器 DOM 都保證就緒）。
 //
 // 啟動流程：
@@ -34,7 +34,7 @@
   // 否則播放很快追上翻譯前線、字幕落後露原文。
   let waiting = false;
   // 「自動跳回開頭並從頭播放」只在每支影片的第一次翻譯做一次。
-  // 記下已跳播過的 videoId — 同一支影片重新切換「譯」→ 原地翻譯不再拉回 0:00；
+  // 記下已跳播過的 videoId — 同一支影片重新切換 aiyu → 原地翻譯不再拉回 0:00；
   // 換到別支影片 → 那支自己的第一次。模組層級 Set，SPA 換影片保留、整頁重載才清空。
   const jumpedVideoIds = new Set();
   let syncTimer = null;
@@ -423,13 +423,14 @@
   function updateButton() {
     const btn = document.querySelector(".aiyu-yt-btn");
     if (!btn) return;
-    btn.style.color = active ? "#3ea6ff" : "#fff";
-    btn.style.opacity = active ? "1" : "0.9";
+    // 啟用時吉祥物全彩（愛玉色），停用時去飽和＋淡化
+    btn.style.filter = active ? "none" : "grayscale(0.9)";
+    btn.style.opacity = active ? "1" : "0.55";
     btn.title = active ? "關閉 aiyu 字幕翻譯" : "啟動 aiyu 字幕翻譯";
     btn.setAttribute("aria-pressed", active ? "true" : "false");
   }
 
-  // 在播放列右側控制區注入「譯」按鈕；YouTube 會重建控制列，故由輪詢持續確保它在
+  // 在播放列右側控制區注入aiyu 按鈕；YouTube 會重建控制列，故由輪詢持續確保它在
   function ensureButton() {
     const bar = document.querySelector(".ytp-right-controls");
     if (!bar) return;
@@ -439,7 +440,6 @@
     }
     const btn = document.createElement("button");
     btn.className = "ytp-button aiyu-yt-btn";
-    btn.textContent = "譯";
     Object.assign(btn.style, {
       width: "48px",
       height: "100%",
@@ -447,12 +447,25 @@
       alignItems: "center",
       justifyContent: "center",
       verticalAlign: "top",
-      fontSize: "16px",
-      fontWeight: "700",
-      fontFamily: "'Noto Sans TC', system-ui, sans-serif",
-      color: "#fff",
-      cursor: "pointer"
+      cursor: "pointer",
+      transition: "filter .15s ease, opacity .15s ease"
     });
+    const img = document.createElement("img");
+    img.src = chrome.runtime.getURL("icons/logo.png");
+    img.alt = "aiyu";
+    img.draggable = false;
+    Object.assign(img.style, {
+      height: "20px",
+      width: "auto",
+      pointerEvents: "none",
+      // 在 YouTube 深色控制列上加白色勾邊，讓吉祥物邊緣清楚（off/on 都套用）
+      filter:
+        "drop-shadow(1px 0 0 rgba(255,255,255,.95)) " +
+        "drop-shadow(-1px 0 0 rgba(255,255,255,.95)) " +
+        "drop-shadow(0 1px 0 rgba(255,255,255,.95)) " +
+        "drop-shadow(0 -1px 0 rgba(255,255,255,.95))"
+    });
+    btn.appendChild(img);
     btn.addEventListener("click", onButtonClick);
     btn.addEventListener("mouseenter", showMenu);
     btn.addEventListener("mouseleave", scheduleHideMenu);
@@ -1461,7 +1474,7 @@
     curIdx = -1;          // 強制下一次 tick 重畫
     const video = getVideo();
     if (video) {
-      // 影片在按「譯」之前本來就在播（是我們主動暫停的），故 play() 幾乎一定被允許；
+      // 影片在按 aiyu 之前本來就在播（是我們主動暫停的），故 play() 幾乎一定被允許；
       // 萬一仍被 autoplay 政策擋下，就停在 0、字幕已備妥，使用者自行按播放即可。
       const p = video.play();
       if (p && typeof p.catch === "function") p.catch(() => {});
