@@ -6,7 +6,7 @@
 
 一個專注於 **YouTube 字幕翻譯** 的 Chrome 擴充套件，呼叫本機的 `claude`、`codex` 或 `agy`（Antigravity）CLI，把字幕翻成 **台灣正體中文**（也可翻譯網頁上選取的文字）。
 
-> **狀態**：0.3.0
+> **狀態**：0.3.1
 > **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
 
@@ -35,7 +35,7 @@
 - **選取文字** 在任意網頁選取後，右鍵「aiyu：翻譯選取文字」，譯文顯示在可拖曳縮放的浮動視窗（譯上原下／左右並排可切換、可搜尋）（`content/article.js`）。
 - **共用搜尋元件**（`content/search-box.js`）：逐字稿面板與選取翻譯視窗共用同一條關鍵字搜尋／高亮／逐處導覽列。
 - **譯者人格依情境切換**：字幕走「即時口譯」、選取文字走「資深翻譯記者」（在 host 的 system prompt 內切換）。
-- **詞庫**（預設停用，須在進階設定勾選「啟用台灣詞庫」）注入 system prompt，不做後處理替換 — 模型會理解上下文，避免「程序員→程式員」這類災難。
+- **台灣用語**由預設 system prompt 指示把握（含「優化→最佳化」等高頻錨點，模型類推其餘）；**詞庫**（預設停用，進階設定勾選「啟用台灣詞庫」）為可選的完整對照表，同樣注入 system prompt、不做後處理替換 — 模型理解上下文，避免「程序員→程式員」這類災難。注意：啟用詞庫會讓每次呼叫多 ~2300 字，Opus 等模型對大 prompt 較慢。
 
 ---
 
@@ -166,6 +166,7 @@ aiyu/
 │   │   ├── search-box.js      # 共用搜尋列（逐字稿面板／選取視窗共用）
 │   │   ├── article.js         # 選取文字翻譯的浮動視窗 UI
 │   │   ├── article.css
+│   │   ├── translate-scheduler.js # YT 翻譯排程器：失敗群組優先重試、bounded、永不漏譯（純邏輯）
 │   │   └── youtube.js         # YT 字幕 overlay + 逐字稿面板 + SRT 匯出
 │   ├── shared/
 │   │   └── models.js          # 模型清單／預設（單一來源；sw / popup / options 共用）
