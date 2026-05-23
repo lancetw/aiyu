@@ -34,6 +34,10 @@
     <section>
       <h2>詞庫對照（台灣正體）</h2>
       <p class="hint">每行一條，格式 <code>對岸詞=台灣詞</code>。會注入提示詞引導譯者。</p>
+      <label class="row inline">
+        <input type="checkbox" id="glossaryEnabled" />
+        <span>啟用台灣詞庫（預設關閉；勾選並按下方「儲存」後才會套用）</span>
+      </label>
       <textarea id="glossary" rows="14" spellcheck="false"></textarea>
       <button id="reset-glossary">還原預設詞庫</button>
     </section>

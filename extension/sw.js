@@ -40,7 +40,7 @@ function makeKey(text, target, style, context, backend) {
 // node 測試走 require。兩者都把 AIYU 掛到全域(self/globalThis)。
 if (typeof importScripts === "function") importScripts("shared/models.js");
 else if (typeof require === "function") require("./shared/models.js");
-const { resolveModel, modelLabel, DEFAULT_MODEL } = AIYU;
+const { resolveModel, modelLabel, DEFAULT_MODEL, DEFAULT_GLOSSARY } = AIYU;
 
 function ensurePort() {
   if (port) return port;
@@ -114,7 +114,10 @@ async function getSettings() {
     target: "zh-TW",
     style: "natural",
     customPrompt: "",
-    glossary: []
+    // glossary＝詞庫「內容」（單一來源 shared/models.js）；glossaryEnabled＝是否套用（gate）。
+    // 兩者正交，且預設「不啟用」(opt-in)：使用者須在進階設定勾「啟用台灣詞庫」並儲存才生效。
+    glossary: DEFAULT_GLOSSARY,
+    glossaryEnabled: false
   });
   return d;
 }
@@ -146,7 +149,8 @@ async function translateBatch(segments, settings, context) {
     style: settings.style,
     context,
     customPrompt: settings.customPrompt,
-    glossary: settings.glossary,
+    // opt-in：未啟用就送空詞庫，host 端 buildPrompt 收到空陣列自然不組 glossaryBlock。
+    glossary: settings.glossaryEnabled ? settings.glossary : [],
     segments: need.map((n) => ({ id: n.seg.id, text: n.seg.text }))
   });
 
