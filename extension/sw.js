@@ -276,6 +276,17 @@ async function getSelectionText(tabId, frameId, fallback) {
   return fallback || "";
 }
 
+// 右鍵當下要注入哪些 content script。抽成純函式供 test/ 驗證相依順序。
+// search-box.js 定義 window.aiyuCreateSearchBox，article.js:208 / youtube.js:833 依賴之
+// → search-box.js 必須排在它們之前。YouTube 上 declarative 已先載 search-box，此處重列
+//   屬冗餘但無害（各 content script 有 __aiyuLoaded 旗標防重複）。
+function contentScriptFiles(url) {
+  const isYouTube = /^https?:\/\/[^/]*\.?youtube\.com\//.test(url || "");
+  return isYouTube
+    ? ["content/search-box.js", "content/translate-scheduler.js", "content/youtube.js", "content/article.js"]
+    : ["content/search-box.js", "content/article.js"];
+}
+
 // 把對應的 content script 注入分頁。content script 有 __aiyuLoaded guard，
 // 重複注入是安全的（guard 會讓它 early return，不重複註冊 listener）。
 async function ensureContentScripts(tab) {
@@ -284,10 +295,7 @@ async function ensureContentScripts(tab) {
   // file:// 也放行(本機 PDF)；注意 file:// 需在 chrome://extensions 開「允許存取檔案網址」，
   // 否則 executeScript 會擲錯。chrome://、PDF 檢視器自身的 chrome-extension:// 框架仍無法注入。
   if (!/^(https?|file):\/\//.test(url)) return false;
-  const isYouTube = /^https?:\/\/[^/]*\.?youtube\.com\//.test(url);
-  const files = isYouTube
-    ? ["content/translate-scheduler.js", "content/youtube.js", "content/article.js"]
-    : ["content/article.js"];
+  const files = contentScriptFiles(url);
   try {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
     await chrome.scripting.insertCSS({
@@ -382,5 +390,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // node 測試用：瀏覽器/SW 環境無 module，故守衛匯出純邏輯供 test/ 載入，不影響執行。
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { translateBatch, makeKey, mergeHostResults };
+  module.exports = { translateBatch, makeKey, mergeHostResults, contentScriptFiles };
 }
