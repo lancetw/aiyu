@@ -22,7 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HOST_NAME = "com.lancetw.aiyu";
 // 擴充 ID。host 的 allowed_origins 同時信任兩者（dual-ID）：
@@ -89,6 +89,20 @@ function detectedBrowsers() {
 
 function winRegKey(b) {
   return `HKCU\\${b.win}\\NativeMessagingHosts\\${HOST_NAME}`;
+}
+
+function parseBrowsersFlag(str) {
+  const ids = [...new Set(String(str).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  const valid = new Set(BROWSERS.map((b) => b.id));
+  return { known: ids.filter((id) => valid.has(id)), unknown: ids.filter((id) => !valid.has(id)) };
+}
+
+// 決定要裝到哪些。回傳 { mode:"list", ids } 或 { mode:"interactive" }
+function resolveSelection({ browsersFlag, all, isTTY, detectedIds }) {
+  if (browsersFlag) return { mode: "list", ids: parseBrowsersFlag(browsersFlag).known };
+  if (all) return { mode: "list", ids: detectedIds };
+  if (isTTY) return { mode: "interactive" };
+  return { mode: "list", ids: detectedIds }; // 非 TTY 退路：全裝（保護 auto-deploy）
 }
 
 function regExe() {
@@ -236,9 +250,16 @@ function printHelp() {
 平台：${PLATFORM}　擴充 ID（dev／store）：${DEV_EXT_ID} ／ ${STORE_EXT_ID}`);
 }
 
-(function main() {
+async function main() {
   if (HELP) return printHelp();
   log(`aiyu installer　平台=${PLATFORM}　node=${process.version}${DRY ? "　(dry-run)" : ""}`);
   if (UNINSTALL) return doUninstall();
-  doInstall();
-})();
+  return doInstall();
+}
+
+export { parseBrowsersFlag, resolveSelection };
+
+// 直接執行才跑 main；被 import（測試）時不跑
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}

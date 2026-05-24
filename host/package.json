@@ -6,6 +6,9 @@
   "bin": {
     "aiyu": "install.js"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "files": [
     "aiyu-host.js",
     "install.js"
