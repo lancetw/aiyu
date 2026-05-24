@@ -22,7 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const HOST_NAME = "com.lancetw.aiyu";
 // 擴充 ID。host 的 allowed_origins 同時信任兩者（dual-ID）：
@@ -313,7 +313,20 @@ async function main() {
 
 export { parseBrowsersFlag, resolveSelection };
 
-// 直接執行才跑 main；被 import（測試）時不跑
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// 直接執行才跑 main；被 import（測試）時不跑。
+// 用 realpath 比對而非字串相等：npx/npm 透過 node_modules/.bin/<name> 的 symlink 啟動 bin，
+// 此時 process.argv[1] 是 symlink 路徑，需解析回真實檔才會等於 import.meta.url（Node 已對其做 realpath）。
+// 否則守衛誤判「非進入點」→ main() 不執行 → 安裝器經 npx 靜默失效。
+function isEntryPoint() {
+  const entry = process.argv[1];
+  if (!entry) return false; // 例如 node -e，無 argv[1]
+  try {
+    return fs.realpathSync(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return false; // argv[1] 不是可解析的真實檔
+  }
+}
+
+if (isEntryPoint()) {
   main().catch((e) => { console.error(e); process.exit(1); });
 }
