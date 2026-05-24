@@ -184,6 +184,22 @@ aiyu/
 
 ---
 
+## 隱私
+
+aiyu **沒有開發者伺服器、不收集資料、不做分析或追蹤**。你要翻譯的文字只會交給「你自己安裝並登入」的 AI 工具（`claude`／`codex`／`agy`），由它在你自己的帳號下送往對應供應商（Anthropic／OpenAI／Google）。完整說明見 **[隱私權政策（PRIVACY.md）](PRIVACY.md)**。
+
+> host 的本機 log 只含操作性中繼資料（時間／模型／prompt 長度／錯誤），正常不含你的原文或譯文；想完全關閉寫檔可設 `AIYU_LOG=/dev/null`（Windows：`NUL`）。
+
+---
+
+## 解除安裝
+
+1. `chrome://extensions` 移除 aiyu 擴充。
+2. 移除本機 native host 註冊：`node host/install.js --uninstall`。
+3. （可選）刪除本機 log：`~/Library/Application Support/aiyu/aiyu-host.log`（Windows／Linux 位置不同）。
+
+---
+
 ## 授權
 
 [MIT](LICENSE) © 2026 lancetw
