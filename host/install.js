@@ -56,30 +56,39 @@ function installDir() {
   return path.join(process.env.XDG_DATA_HOME || path.join(HOME, ".local/share"), "aiyu"); // linux
 }
 
-// unix：各瀏覽器 NativeMessagingHosts 目錄（parent 存在才算裝了該瀏覽器）
-function unixBrowserDirs() {
+// 單一真相來源：每個瀏覽器一筆。id = 使用者在 --browsers 用的短名；label 給選單顯示。
+// mac/linux 為 NativeMessagingHosts 之上層子路徑；win 為 HKCU 機碼基底（null = 該平台無此瀏覽器）。
+const BROWSERS = [
+  { id: "chrome",   label: "Google Chrome",             mac: "Google/Chrome",                 linux: "google-chrome",          win: "Software\\Google\\Chrome" },
+  { id: "canary",   label: "Google Chrome Canary",      mac: "Google/Chrome Canary",          linux: null,                     win: null },
+  { id: "beta",     label: "Google Chrome Beta",        mac: "Google/Chrome Beta",            linux: "google-chrome-beta",     win: null },
+  { id: "dev",      label: "Google Chrome Dev",         mac: "Google/Chrome Dev",             linux: "google-chrome-unstable", win: null },
+  { id: "testing",  label: "Google Chrome for Testing", mac: "Google/Chrome for Testing",     linux: null,                     win: null },
+  { id: "chromium", label: "Chromium",                  mac: "Chromium",                      linux: "chromium",               win: "Software\\Chromium" },
+  { id: "edge",     label: "Microsoft Edge",            mac: "Microsoft Edge",                linux: "microsoft-edge",         win: "Software\\Microsoft\\Edge" },
+  { id: "brave",    label: "Brave",                     mac: "BraveSoftware/Brave-Browser",   linux: "BraveSoftware/Brave-Browser", win: "Software\\BraveSoftware\\Brave-Browser" },
+  { id: "arc",      label: "Arc",                       mac: "Arc/User Data",                 linux: null,                     win: null },
+];
+
+// 該瀏覽器在本平台的 NativeMessagingHosts 目錄（不支援則回 null）
+function nmhDir(b) {
   const ASUP = path.join(HOME, "Library/Application Support");
   const CFG = process.env.XDG_CONFIG_HOME || path.join(HOME, ".config");
-  if (PLATFORM === "darwin")
-    return [
-      "Google/Chrome", "Google/Chrome Canary", "Google/Chrome Beta", "Google/Chrome Dev",
-      "Google/Chrome for Testing", "Chromium", "Microsoft Edge",
-      "BraveSoftware/Brave-Browser", "Arc/User Data"
-    ].map((b) => path.join(ASUP, b, "NativeMessagingHosts"));
-  return [
-    "google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium",
-    "microsoft-edge", "BraveSoftware/Brave-Browser"
-  ].map((b) => path.join(CFG, b, "NativeMessagingHosts"));
+  if (PLATFORM === "darwin") return b.mac ? path.join(ASUP, b.mac, "NativeMessagingHosts") : null;
+  return b.linux ? path.join(CFG, b.linux, "NativeMessagingHosts") : null; // linux
 }
 
-// windows：各瀏覽器登錄檔機碼（HKCU，免管理員）
-function winRegKeys() {
-  return [
-    "Software\\Google\\Chrome",
-    "Software\\Chromium",
-    "Software\\Microsoft\\Edge",
-    "Software\\BraveSoftware\\Brave-Browser"
-  ].map((b) => `HKCU\\${b}\\NativeMessagingHosts\\${HOST_NAME}`);
+// 偵測：unix 上「NativeMessagingHosts 父目錄存在」視為已裝；win best-effort（無法可靠偵測）回傳所有有機碼者
+function detectedBrowsers() {
+  if (PLATFORM === "win32") return BROWSERS.filter((b) => b.win);
+  return BROWSERS.filter((b) => {
+    const d = nmhDir(b);
+    return d && fs.existsSync(path.dirname(d));
+  });
+}
+
+function winRegKey(b) {
+  return `HKCU\\${b.win}\\NativeMessagingHosts\\${HOST_NAME}`;
 }
 
 function regExe() {
@@ -140,11 +149,13 @@ exec "${node}" "${hostJsDst}" "$@"
 
   // 3. 註冊 manifest
   const manifest = JSON.stringify(manifestObject(launcherPath), null, 2);
+  const targets = detectedBrowsers(); // Task 4 會在此之前用 resolveSelection 收窄
   let registered = 0;
   if (PLATFORM === "win32") {
     const manifestPath = path.join(dir, `${HOST_NAME}.json`);
     writeFile(manifestPath, manifest);
-    for (const key of winRegKeys()) {
+    for (const b of targets) {
+      const key = winRegKey(b);
       step(`reg add ${key} → ${manifestPath}`);
       if (DRY) { registered++; continue; }
       try {
@@ -157,9 +168,8 @@ exec "${node}" "${hostJsDst}" "$@"
       }
     }
   } else {
-    for (const d of unixBrowserDirs()) {
-      if (!fs.existsSync(path.dirname(d))) continue; // 沒裝這個瀏覽器
-      writeFile(path.join(d, `${HOST_NAME}.json`), manifest);
+    for (const b of targets) {
+      writeFile(path.join(nmhDir(b), `${HOST_NAME}.json`), manifest);
       registered++;
     }
   }
@@ -194,14 +204,18 @@ function printExtensionSteps() {
 function doUninstall() {
   const dir = installDir();
   if (PLATFORM === "win32") {
-    for (const key of winRegKeys()) {
+    for (const b of BROWSERS) {
+      if (!b.win) continue;
+      const key = winRegKey(b);
       step(`reg delete ${key}`);
       if (!DRY) {
         try { execFileSync(regExe(), ["delete", key, "/f"], { stdio: "ignore" }); } catch { /* 沒這個機碼 */ }
       }
     }
   } else {
-    for (const d of unixBrowserDirs()) {
+    for (const b of BROWSERS) {
+      const d = nmhDir(b);
+      if (!d) continue;
       const out = path.join(d, `${HOST_NAME}.json`);
       if (fs.existsSync(out)) { step(`刪除 ${out}`); if (!DRY) fs.rmSync(out); }
     }
