@@ -7,7 +7,7 @@
 # macOS
 .DS_Store
 
-# node（host 目前零相依，預留）
+# node
 node_modules/
 
 # 本機 QA 截圖與測試金鑰（非版控內容；README 用的是 docs/images/）
