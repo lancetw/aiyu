@@ -10,7 +10,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-const HOST_VERSION = "0.3.1";
+const HOST_VERSION = "0.3.2";
 // 單次 CLI 呼叫上限：全後端統一 300s。健康呼叫遠低於此（claude ~24s、codex ~15s），
 // 300s 幾乎只有真正卡死/中斷/伺服器負載或額度退避拉長時才觸發 → 不再誤砍正在正常工作的
 // 呼叫。偶發失敗（含 codex 罕見的「整個卡住」）由前端 scheduler 優先重試、bounded 後大聲
@@ -297,17 +297,10 @@ function runCli(cli, prompt, model, context) {
   return new Promise((resolve, reject) => {
     let bin, args;
     let outFile = null; // codex 走 --output-last-message 寫檔，避免 stdout trace 污染
+    let stdinPayload = null; // Windows shell 模式改走 stdin 餵 prompt，避免 cmd.exe 拆引號
 
     if (cli === "claude") {
       bin = findExecutable("claude");
-      // 加速：用 --system-prompt 整個取代 Claude Code 內建 system prompt —
-      // agentic harness、工具用法說明對純翻譯都是多餘負擔。再加：
-      //   --disable-slash-commands 關掉所有 skill
-      //   --tools ""              拿掉所有工具 schema（縮小請求）
-      //   --strict-mcp-config     不連任何 MCP server
-      //   --no-session-persistence 不寫 session 檔
-      // 注意：--tools 是變參旗標，其值 "" 後面必須緊接另一個旗標（這裡是
-      // --system-prompt），否則會把後面的 positional prompt 一起吞進 tools 清單。
       args = [
         "-p",
         "--tools", "",
@@ -329,21 +322,13 @@ function runCli(cli, prompt, model, context) {
         "--skip-git-repo-check",
         "--ephemeral",
         "--color", "never",
-        // 字幕要即時 → low（比預設快約一半）；文章／選取文字重品質 → medium
-        //（codex 對長句、比喻、術語會多花心思）。minimal 會導致無輸出，故下限 low。
         "-c", `model_reasoning_effort=${context === "youtube" ? "low" : "medium"}`,
         "--output-last-message", outFile
       ];
       if (model) args.push("-m", model);
-      // codex 沒有替換內建 system prompt 的旗標（指令編進 Rust binary）→
-      // 指示與輸入合併成單一 prompt 傳入。
       args.push(`${prompt.system}\n\n${prompt.user}`);
     } else if (cli === "agy") {
       bin = findExecutable("agy");
-      // Antigravity CLI（agy）：print 模式（-p）單次 prompt、stdout 直接吐乾淨 JSON，
-      // 無 agentic trace 雜訊 → 不需 codex 那套 --output-last-message 寫檔。
-      // 也沒有 --system-prompt / --model 旗標（模型由帳號端自動路由，print 模式無法指定）
-      // → 比照 codex 把 system+user 合併成單一 positional prompt 傳入；model 一律忽略。
       args = ["-p", `${prompt.system}\n\n${prompt.user}`];
     } else {
       reject(new Error(`unknown cli: ${cli}`));
@@ -354,8 +339,6 @@ function runCli(cli, prompt, model, context) {
     const promptLen = prompt.system.length + prompt.user.length;
     log("spawn", bin, "subcmd=", args[0], "model=", model || "(default)", "prompt-len=", promptLen);
 
-    // 補上常見 CLI 安裝位置到子行程 PATH（跨平台）：Chrome 啟動 host 時 PATH 極簡，
-    // 子 CLI 自己再 spawn 工具時可能找不到。
     const extraPath = IS_WIN
       ? [path.join(process.env.APPDATA || path.join(os.homedir(), "AppData/Roaming"), "npm")]
       : ["/opt/homebrew/bin", "/usr/local/bin", path.join(os.homedir(), ".local/bin")];
@@ -364,17 +347,36 @@ function runCli(cli, prompt, model, context) {
       PATH: [...extraPath, process.env.PATH || ""].join(path.delimiter)
     };
 
-    // Windows：npm 的 CLI 是 .cmd/.bat 批次檔，spawn 不能直接執行（Node 會丟 EINVAL）
-    // → 需經 shell。⚠ 注意：prompt 是含換行/引號的長字串，透過 cmd.exe 以 argv 傳遞
-    // 可能被破壞；若 Windows 實測翻譯異常，改走 stdin 餵 prompt（把 prompt 從 argv 拿掉、
-    // 改 stdio[0]="pipe" 後 child.stdin.write）—— 但需先確認各 CLI 支援從 stdin 讀 prompt。
+    // Windows：.cmd/.bat 須經 shell 才能 spawn（否則 Node 丟 EINVAL）。但 cmd.exe 會
+    // 對 argv 做 tokenization，含空白/引號/換行的長 prompt 會被拆散 → CLI 報錯。
+    // 解法：把 prompt 從 argv 拔掉，改寫入 stdin（codex/claude/agy 都支援從 stdin 讀 prompt）。
     const useShell = IS_WIN && /\.(cmd|bat)$/i.test(bin || "");
+    if (useShell) {
+      if (cli === "codex") {
+        // codex: 最後一個 positional arg 就是 prompt → 拔掉，改餵 stdin
+        stdinPayload = args.pop();
+      } else if (cli === "claude") {
+        // claude -p: 最後一個 positional arg 是 user prompt；--system-prompt 的值也
+        // 可能含特殊字元 → 一併改寫 tmpfile 再用 --system-prompt-file（未來可考慮）。
+        // 但 claude -p 支援從 stdin 讀 prompt → 先拔 user prompt 就好。
+        stdinPayload = args.pop();
+      } else if (cli === "agy") {
+        // agy -p <prompt> → 拔 prompt，改走 stdin
+        stdinPayload = args.pop();
+      }
+    }
+
     const child = spawn(bin, args, {
       env,
       cwd: os.tmpdir(),
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [stdinPayload != null ? "pipe" : "ignore", "pipe", "pipe"],
       shell: useShell
     });
+
+    if (stdinPayload != null) {
+      child.stdin.write(stdinPayload);
+      child.stdin.end();
+    }
 
     let stdout = "";
     let stderr = "";
