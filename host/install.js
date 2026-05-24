@@ -294,10 +294,13 @@ function printHelp() {
   log(`aiyu 跨平台 native host 安裝器
 
 用法：
-  node install.js              安裝 host 並印出擴充安裝步驟
-  node install.js --dry-run    只印出會做什麼，不實際寫入
-  node install.js --uninstall  移除 host 註冊（manifest / 登錄檔）
+  node install.js                          安裝 host（TTY 下互動選擇瀏覽器）
+  node install.js --all                    安裝到所有偵測到的瀏覽器（跳過提問）
+  node install.js --browsers=chrome,brave  只安裝到指定瀏覽器
+  node install.js --dry-run                只印出會做什麼，不實際寫入
+  node install.js --uninstall              移除 host 註冊（可加 --browsers= 只移除部分）
 
+瀏覽器 id：${BROWSERS.map((b) => b.id).join(", ")}
 平台：${PLATFORM}　擴充 ID（dev／store）：${DEV_EXT_ID} ／ ${STORE_EXT_ID}`);
 }
 

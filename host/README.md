@@ -12,6 +12,15 @@ npx @lancetw/aiyu
 
 Then restart your browser, click the aiyu icon → **「測試 host 連線」** (Test host connection).
 
+By default the installer **lets you choose which browsers** to register (interactive checklist in a terminal). To skip the prompt:
+
+```sh
+npx @lancetw/aiyu --all                      # all detected browsers
+npx @lancetw/aiyu --browsers=chrome,brave    # only these
+```
+
+Valid ids: `chrome, canary, beta, dev, testing, chromium, edge, brave, arc`.
+
 ## Requirements
 
 - **Node.js ≥ 20.12**
@@ -26,12 +35,13 @@ Then restart your browser, click the aiyu icon → **「測試 host 連線」** 
 ## Uninstall
 
 ```sh
-npx @lancetw/aiyu --uninstall
+npx @lancetw/aiyu --uninstall                    # remove from all browsers
+npx @lancetw/aiyu --uninstall --browsers=chrome  # remove from one only
 ```
 
 ## What it does
 
-`npx @lancetw/aiyu` copies the host to a stable location, generates a launcher pinned to your Node binary (no reliance on a shebang), and registers the native-messaging manifest for each detected Chromium-based browser (Chrome / Chromium / Edge / Brave / Arc). The host trusts both the off-store (unpacked-dev) and Chrome Web Store extension IDs, so either build connects.
+`npx @lancetw/aiyu` copies the host to a stable location, generates a launcher pinned to your Node binary (no reliance on a shebang), and registers the native-messaging manifest for the browsers you choose (interactive by default; or `--browsers=`/`--all`). The host trusts both the off-store (unpacked-dev) and Chrome Web Store extension IDs, so either build connects.
 
 ## Privacy
 
