@@ -1,14 +1,15 @@
-#!/Users/lancetw/.nvm/versions/node/v24.11.0/bin/node
+#!/usr/bin/env node
 // aiyu native messaging host
 // 從 stdin 讀 4-byte LE length + JSON，呼叫 claude -p 或 codex exec，回 JSON 結果。
 // 所有除錯訊息走 stderr，stdout 嚴格只能寫 framing message。
 
-"use strict";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
 
-const { spawn } = require("child_process");
-const path = require("path");
-const fs = require("fs");
-const os = require("os");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const HOST_VERSION = "0.3.2";
 // 單次 CLI 呼叫上限：全後端統一 300s。健康呼叫遠低於此（claude ~24s、codex ~15s），

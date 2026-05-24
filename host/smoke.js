@@ -2,8 +2,11 @@
 // 模擬 Chrome：往 aiyu-host 發兩則訊息（ping + translate 一段），印出回應
 // 用法：node host/smoke.js [claude|codex]
 
-const { spawn } = require("child_process");
-const path = require("path");
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const cli = process.argv[2] || "claude";
 const host = spawn(process.execPath, [path.join(__dirname, "aiyu-host.js")], {

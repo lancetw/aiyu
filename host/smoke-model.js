@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // 測 model 參數有沒有帶到 CLI
 // 用法：node host/smoke-model.js <claude|codex> <model>
-const { spawn } = require("child_process");
-const path = require("path");
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const cli = process.argv[2] || "claude";
 const model = process.argv[3] || (cli === "codex" ? "gpt-5.4-mini" : "haiku");

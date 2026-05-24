@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // 模擬 sw.js 同時發 3 筆 translate 請求，檢查 host 不會混淆 id
-const { spawn } = require("child_process");
-const path = require("path");
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const host = spawn(process.execPath, [path.join(__dirname, "aiyu-host.js")], {
   stdio: ["pipe", "pipe", "inherit"]

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-"use strict";
 // aiyu 跨平台 native host 安裝器 —— 取代 install.sh / deploy.sh，並新增 Windows 支援。
 //
 // 做的事：
@@ -19,10 +18,11 @@
 //
 // 擴充 ID 是從 extension/manifest.json 的 key 推導出來的固定值（off-store 自有金鑰，永遠一致）。
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-const { execFileSync } = require("child_process");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const HOST_NAME = "com.lancetw.aiyu";
 // 擴充 ID。host 的 allowed_origins 同時信任兩者（dual-ID）：
@@ -36,7 +36,7 @@ const EXT_IDS = [DEV_EXT_ID, STORE_EXT_ID];
 
 const PLATFORM = process.platform; // 'darwin' | 'linux' | 'win32'
 const HOME = os.homedir();
-const SRC_DIR = __dirname; // host/
+const SRC_DIR = path.dirname(fileURLToPath(import.meta.url)); // host/
 const REPO_ROOT = path.join(SRC_DIR, "..");
 const EXT_DIR = path.join(REPO_ROOT, "extension");
 const HOST_JS_SRC = path.join(SRC_DIR, "aiyu-host.js");
@@ -111,7 +111,8 @@ function doInstall() {
   }
 
   const dir = installDir();
-  const hostJsDst = path.join(dir, "aiyu-host.js");
+  // host 被複製到無 package.json 的目錄 → 必須用 .mjs 副檔名才會被當 ESM 跑
+  const hostJsDst = path.join(dir, "aiyu-host.mjs");
 
   // 1. 複製 host
   step(`複製 host → ${hostJsDst}`);
