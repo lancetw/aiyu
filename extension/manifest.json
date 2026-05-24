@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "aiyu — AI 譯語",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8oUcjMme5ildxtj09bb5FBm+AmRlB4Fn4gDrs6rPM5d6vXJOlQvPE/qUuSspQq7dZH1siM/MC2+gvjjybukbggs8Nr1zMhPCJCVorXJVxQowR377F0Ey+oFhynIan8QIaFm8DFO0A7Smrrg9FIGpjMURkBhJMXRCI64uLuQCcscTSKxDrCbFZgZceUooqq8OrjxETvvvwiAugBjl1GoSHL9aNdsivtBx12wOfxNBib3224hVRTiNaH779MNRA8nV0L/WQ8PS2RpHnQZjkt/Kc5DVV5YrFbNSM+Q/rsniqe/thgObpYXBSa5WCW0QhEXS9YtznN+pvLStOzQmSIPrHQIDAQAB",
   "description": "用 claude 或 codex 翻譯 YouTube 字幕，預設台灣正體中文。",
   "permissions": ["nativeMessaging", "storage", "activeTab", "scripting", "contextMenus"],
