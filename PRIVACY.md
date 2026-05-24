@@ -67,7 +67,7 @@ aiyu **不會**在你未主動觸發時讀取頁面內容，也不收集瀏覽�
 
 - 自由選擇要用哪個 CLI／供應商（或都不用）。
 - 隨時在擴充清除翻譯快取。
-- 解除安裝：在 Chrome 移除擴充；依專案 README 指示移除本機 host（目前為 `node host/install.js --uninstall`）；如有需要可自行刪除本機 log 檔。
+- 解除安裝：在 Chrome 移除擴充；移除本機 host 執行 `npx @lancetw/aiyu --uninstall`（或從 repo：`node host/install.js --uninstall`）；如有需要可自行刪除本機 log 檔。
 
 ### 兒童
 
@@ -145,7 +145,7 @@ aiyu does **not** read page content unless you actively trigger it, and does not
 
 - Choose which CLI/provider to use (or none).
 - Clear the translation cache from the extension at any time.
-- Uninstall: remove the extension in Chrome; remove the native host per the project README (currently `node host/install.js --uninstall`); delete the local log file if you wish.
+- Uninstall: remove the extension in Chrome; remove the native host with `npx @lancetw/aiyu --uninstall` (or from the repo: `node host/install.js --uninstall`); delete the local log file if you wish.
 
 ### Children
 

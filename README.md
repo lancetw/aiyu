@@ -195,7 +195,7 @@ aiyu **沒有開發者伺服器、不收集資料、不做分析或追蹤**。�
 ## 解除安裝
 
 1. `chrome://extensions` 移除 aiyu 擴充。
-2. 移除本機 native host 註冊：`node host/install.js --uninstall`。
+2. 移除本機 native host 註冊：`npx @lancetw/aiyu --uninstall`（或從 repo：`node host/install.js --uninstall`）。
 3. （可選）刪除本機 log：`~/Library/Application Support/aiyu/aiyu-host.log`（Windows／Linux 位置不同）。
 
 ---
