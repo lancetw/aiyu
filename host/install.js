@@ -41,10 +41,16 @@ const REPO_ROOT = path.join(SRC_DIR, "..");
 const EXT_DIR = path.join(REPO_ROOT, "extension");
 const HOST_JS_SRC = path.join(SRC_DIR, "aiyu-host.js");
 
-const argv = new Set(process.argv.slice(2));
+const argList = process.argv.slice(2);
+const argv = new Set(argList);
 const DRY = argv.has("--dry-run");
 const UNINSTALL = argv.has("--uninstall");
 const HELP = argv.has("--help") || argv.has("-h");
+const ALL = argv.has("--all");
+const BROWSERS_FLAG = (() => {
+  const p = argList.find((a) => a.startsWith("--browsers="));
+  return p ? p.slice("--browsers=".length) : null;
+})();
 
 function log(...a) { console.log(...a); }
 function step(s) { console.log((DRY ? "[dry-run] " : "") + s); }
@@ -105,6 +111,27 @@ function resolveSelection({ browsersFlag, all, isTTY, detectedIds }) {
   return { mode: "list", ids: detectedIds }; // 非 TTY 退路：全裝（保護 auto-deploy）
 }
 
+// TTY 互動多選；只在此分支才動態載入 clack。未安裝則 fail-soft 退回全裝。
+async function pickInteractive(detected) {
+  let clack;
+  try {
+    clack = await import("@clack/prompts");
+  } catch {
+    console.error("⚠ 互動選單需要 @clack/prompts；未安裝，退回全裝。（在 host/ 跑 npm i 後即可使用選單）");
+    return detected.map((b) => b.id);
+  }
+  const picked = await clack.multiselect({
+    message: "要安裝 aiyu host 到哪些瀏覽器？（空白鍵勾選，Enter 確認）",
+    options: detected.map((b) => ({ value: b.id, label: b.label })),
+    initialValues: detected.map((b) => b.id), // 全選 → Enter = 全裝（向後相容）
+  });
+  if (clack.isCancel(picked)) {
+    clack.cancel("已取消，未變更任何瀏覽器。");
+    process.exit(0);
+  }
+  return picked;
+}
+
 function regExe() {
   return path.join(process.env.SystemRoot || "C:\\Windows", "System32", "reg.exe");
 }
@@ -127,7 +154,7 @@ function writeFile(p, content, mode) {
   if (mode) fs.chmodSync(p, mode);
 }
 
-function doInstall() {
+async function doInstall() {
   if (!fs.existsSync(HOST_JS_SRC)) {
     console.error(`✗ 找不到 host：${HOST_JS_SRC}（請從 repo 根目錄附近執行）`);
     process.exit(1);
@@ -163,7 +190,25 @@ exec "${node}" "${hostJsDst}" "$@"
 
   // 3. 註冊 manifest
   const manifest = JSON.stringify(manifestObject(launcherPath), null, 2);
-  const targets = detectedBrowsers(); // Task 4 會在此之前用 resolveSelection 收窄
+  const detected = detectedBrowsers();
+  if (BROWSERS_FLAG) {
+    const { unknown } = parseBrowsersFlag(BROWSERS_FLAG);
+    if (unknown.length)
+      console.error(`⚠ 略過未知瀏覽器 id：${unknown.join(", ")}（合法：${BROWSERS.map((b) => b.id).join(", ")}）`);
+  }
+  const sel = resolveSelection({
+    browsersFlag: BROWSERS_FLAG,
+    all: ALL,
+    isTTY: process.stdout.isTTY,
+    detectedIds: detected.map((b) => b.id),
+  });
+  const chosenIds = sel.mode === "interactive" ? await pickInteractive(detected) : sel.ids;
+  const detectedIdSet = new Set(detected.map((b) => b.id));
+  const targets = BROWSERS.filter((b) => chosenIds.includes(b.id) && detectedIdSet.has(b.id));
+  if (BROWSERS_FLAG && targets.length === 0) {
+    console.error(`✗ --browsers 指定的瀏覽器都沒偵測到。偵測到的：${[...detectedIdSet].join(", ") || "（無）"}`);
+    process.exit(1);
+  }
   let registered = 0;
   if (PLATFORM === "win32") {
     const manifestPath = path.join(dir, `${HOST_NAME}.json`);
@@ -217,8 +262,11 @@ function printExtensionSteps() {
 
 function doUninstall() {
   const dir = installDir();
+  const onlyIds = BROWSERS_FLAG ? parseBrowsersFlag(BROWSERS_FLAG).known : null;
+  const inScope = (b) => !onlyIds || onlyIds.includes(b.id);
   if (PLATFORM === "win32") {
     for (const b of BROWSERS) {
+      if (!inScope(b)) continue;
       if (!b.win) continue;
       const key = winRegKey(b);
       step(`reg delete ${key}`);
@@ -228,14 +276,17 @@ function doUninstall() {
     }
   } else {
     for (const b of BROWSERS) {
+      if (!inScope(b)) continue;
       const d = nmhDir(b);
       if (!d) continue;
       const out = path.join(d, `${HOST_NAME}.json`);
       if (fs.existsSync(out)) { step(`刪除 ${out}`); if (!DRY) fs.rmSync(out); }
     }
   }
-  step(`刪除安裝目錄 ${dir}`);
-  if (!DRY && fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  if (!onlyIds) {
+    step(`刪除安裝目錄 ${dir}`);
+    if (!DRY && fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  }
   log("\n✓ 已移除 host 註冊。擴充請到 chrome://extensions 自行移除。");
 }
 

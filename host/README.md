@@ -14,7 +14,7 @@ Then restart your browser, click the aiyu icon → **「測試 host 連線」** 
 
 ## Requirements
 
-- **Node.js ≥ 18**
+- **Node.js ≥ 20.12**
 - One of these AI CLIs installed **and signed in** (requires that service's account):
   - `claude` — Anthropic Claude Code
   - `codex` — OpenAI Codex
