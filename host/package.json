@@ -1,0 +1,36 @@
+{
+  "name": "@lancetw/aiyu",
+  "version": "0.3.3",
+  "description": "Installs the native-messaging host for the aiyu Chrome extension, letting it call your local claude/codex/agy CLI to translate YouTube subtitles and selected text. Run: npx @lancetw/aiyu",
+  "bin": {
+    "aiyu": "install.js"
+  },
+  "files": [
+    "aiyu-host.js",
+    "install.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "lancetw",
+  "homepage": "https://github.com/lancetw/aiyu#readme",
+  "bugs": {
+    "url": "https://github.com/lancetw/aiyu/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lancetw/aiyu.git",
+    "directory": "host"
+  },
+  "keywords": [
+    "aiyu",
+    "translation",
+    "youtube",
+    "subtitles",
+    "native-messaging",
+    "chrome-extension",
+    "claude",
+    "codex"
+  ]
+}

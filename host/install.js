@@ -25,9 +25,14 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 
 const HOST_NAME = "com.lancetw.aiyu";
-// off-store：ID 由 manifest 的 key 決定，固定不變 → 直接烤死，使用者免貼。
-// 重新計算： node -e 'const c=require("crypto"),f=require("fs");const k=JSON.parse(f.readFileSync("extension/manifest.json")).key;console.log([...c.createHash("sha256").update(Buffer.from(k,"base64")).digest("hex").slice(0,32)].map(x=>String.fromCharCode(97+parseInt(x,16))).join(""))'
-const EXT_ID = "loelfpeedlfjbjekifhjbbgejajnnpan";
+// 擴充 ID。host 的 allowed_origins 同時信任兩者（dual-ID）：
+//   DEV   = off-store 載入未封裝（ID 由 manifest 的 key 推導，固定）
+//   STORE = Chrome Web Store 上架後指派的 ID
+// 兩個 build 用不同 ID，但同一台 host 都收 → dev 與 store 安裝都能連線。
+// DEV 重新計算： node -e 'const c=require("crypto"),f=require("fs");const k=JSON.parse(f.readFileSync("extension/manifest.json")).key;console.log([...c.createHash("sha256").update(Buffer.from(k,"base64")).digest("hex").slice(0,32)].map(x=>String.fromCharCode(97+parseInt(x,16))).join(""))'
+const DEV_EXT_ID = "loelfpeedlfjbjekifhjbbgejajnnpan";
+const STORE_EXT_ID = "mkdjepnmcmmjbnhkligompoblagocjmd";
+const EXT_IDS = [DEV_EXT_ID, STORE_EXT_ID];
 
 const PLATFORM = process.platform; // 'darwin' | 'linux' | 'win32'
 const HOME = os.homedir();
@@ -87,7 +92,7 @@ function manifestObject(launcherPath) {
     description: "aiyu — AI 譯語 native host",
     path: launcherPath,
     type: "stdio",
-    allowed_origins: [`chrome-extension://${EXT_ID}/`]
+    allowed_origins: EXT_IDS.map((id) => `chrome-extension://${id}/`)
   };
 }
 
@@ -166,14 +171,23 @@ exec "${node}" "${hostJsDst}" "$@"
 }
 
 function printExtensionSteps() {
-  log("\n──────── 安裝擴充（off-store / 載入未封裝）────────");
-  log("1. 開啟  chrome://extensions");
-  log("2. 右上角開啟「開發人員模式」（請保持開啟，否則擴充會被停用）");
-  log("3. 點「載入未封裝項目」，選這個資料夾：");
-  log(`     ${EXT_DIR}`);
-  log(`4. 載入後顯示的 Extension ID 應為： ${EXT_ID}`);
-  log("   （若不同，表示 manifest 的 key 被改過 → 重跑安裝器更新 host 的 allowed_origins）");
-  log("5. 重啟瀏覽器，點擴充圖示 →「測試 host 連線」。");
+  if (fs.existsSync(EXT_DIR)) {
+    // 從 repo 跑（有同層 extension/）：載入未封裝 dev build
+    log("\n──────── 安裝擴充（off-store / 載入未封裝）────────");
+    log("1. 開啟  chrome://extensions");
+    log("2. 右上角開啟「開發人員模式」（請保持開啟，否則擴充會被停用）");
+    log("3. 點「載入未封裝項目」，選這個資料夾：");
+    log(`     ${EXT_DIR}`);
+    log(`4. 載入後顯示的 Extension ID 應為： ${DEV_EXT_ID}`);
+    log("   （若不同，表示 manifest 的 key 被改過 → 重跑安裝器更新 host 的 allowed_origins）");
+    log("5. 重啟瀏覽器，點擴充圖示 →「測試 host 連線」。");
+  } else {
+    // 從 npx 跑（沒有同層 extension/）：擴充來自 Chrome Web Store
+    log("\n──────── 安裝擴充（Chrome Web Store）────────");
+    log("1. 到 Chrome Web Store 安裝 aiyu：");
+    log(`     https://chromewebstore.google.com/detail/${STORE_EXT_ID}`);
+    log("2. 重啟瀏覽器，點擴充圖示 →「測試 host 連線」。");
+  }
 }
 
 function doUninstall() {
@@ -204,7 +218,7 @@ function printHelp() {
   node install.js --dry-run    只印出會做什麼，不實際寫入
   node install.js --uninstall  移除 host 註冊（manifest / 登錄檔）
 
-平台：${PLATFORM}　擴充 ID：${EXT_ID}`);
+平台：${PLATFORM}　擴充 ID（dev／store）：${DEV_EXT_ID} ／ ${STORE_EXT_ID}`);
 }
 
 (function main() {
