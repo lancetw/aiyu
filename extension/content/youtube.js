@@ -1182,7 +1182,7 @@
   // 用「字數」而非「句數」分組：單次 CLI 呼叫的延遲取決於 prompt/輸出大小，而字幕疏密差很多
   // (短片段 vs 長句) → 只有字數上限能穩定壓住每次呼叫時間。
   // 群組調小（全後端）：實測 Opus 對大 prompt 延遲超線性（prompt ~3400→5s、~5900→114s），
-  // 小群組 → 每次呼叫更短更快、進度更平滑、2 併發更有效。逾時已放寬到 300s，故縮小群組
+  // 小群組 → 每次呼叫更短更快、進度更平滑、避開上述超線性斷崖。逾時已放寬到 300s，故縮小群組
   // 是為了「速度與體感」而非「避免 SIGKILL」。
   function groupCues(idxList) {
     const SOFT_CHARS = 400;  // 達此且句尾 → 收尾(對齊句界，譯文較完整)
@@ -1288,7 +1288,7 @@
       return { ok: failedIdxs.length === 0, failedIdxs };
     }
 
-    // 並行 2 條。scheduler 保證：失敗群組優先重排、重試到上限才放棄（永不無聲當作完成）。
+    // 並行 CONCURRENCY 條（見下方常數）。scheduler 保證：失敗群組優先重排、重試到上限才放棄（永不無聲當作完成）。
     async function worker() {
       while (active && !quotaHit) {
         const video = getVideo();
@@ -1316,7 +1316,11 @@
       }
     }
 
-    await Promise.all([worker(), worker()]);
+    // CONCURRENCY=4：實測 Opus（最壞後端）持續 60 組長跑延遲全程平穩、無長尾、0 錯誤，總時間約 1.8× 提速；
+    // codex/agy 更耐併發。scheduler 的 inflight 標記保證任何 N 都不重複派工；撞限流由 RETRY_BACKOFF_MS
+    // ＋額度偵測兜底，要回退只需調小此值（如 4→3）。
+    const CONCURRENCY = 4;
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     if (!active) return;
 
     // 診斷：印出實際錯誤字串，方便判斷是否被正確辨識為「額度用盡」
