@@ -29,6 +29,9 @@
   // 是否仍是當前 run，避免「換片 → 舊 worker await 醒來時新 run 已啟動」的污染與誤報。
   let runSeq = 0;
   let videoId = "";
+  // 上次 fail() 顯示錯誤訊息時的 videoId；用於 always-on tick 偵測「換片後錯誤訊息仍殘留」。
+  // fail() 後 syncTimer 已停 → syncTick 不會再觸發 stop() → 沒有任何路徑會清掉殘留 box。
+  let errorVideoId = "";
   let cues = [];          // [{start,end,dur,text,zh}]
   let curIdx = -1;
   // 使用者用原生字幕鈕 / C 鍵手動隱藏我們的字幕框（aiyu 啟動時才生效）。
@@ -353,6 +356,7 @@
   // 終止性失敗：字幕框顯示紅字錯誤，並停下（還原原生字幕，避免使用者完全沒字幕）
   function fail(msg) {
     render(msg, "error");
+    errorVideoId = videoId; // 標記「這條錯誤屬於哪支影片」→ 換片時 always-on tick 會清掉
     setBadge("");
     stopSync();
     setNativeCaptionsHidden(false);
@@ -1520,6 +1524,7 @@
     if (active) return;
     active = true;
     const myRun = ++runSeq;
+    errorVideoId = ""; // 新嘗試 → 清掉先前的錯誤標記
     document.documentElement.dataset.aiyuActive = "1"; // 通知 yt-key-shim（main world）接管 C 鍵
     curIdx = -1;
     userHidden = false;
@@ -1581,6 +1586,7 @@
   function stop() {
     active = false;
     runSeq++; // 任何舊 run 的 in-flight worker / catch handler 後續比對 runSeq 都會 mismatch
+    errorVideoId = ""; // 主動停止 → 沒有要保留的錯誤訊息
     delete document.documentElement.dataset.aiyuActive; // C 鍵交回 YouTube 原生切換
     waiting = false;
     userHidden = false;
@@ -1600,7 +1606,14 @@
     updateMenuState();
   }
 
-  // 持續確保播放列按鈕存在（YouTube 換頁 / 重建控制列都會把它清掉）
-  setInterval(ensureButton, 1000);
+  // 持續確保播放列按鈕存在（YouTube 換頁 / 重建控制列都會把它清掉）；
+  // 同時兜底清掉「換片後仍殘留的 fail() 錯誤訊息」（fail 後 syncTimer 已停 → syncTick 救不到）。
+  setInterval(() => {
+    ensureButton();
+    if (errorVideoId && getVideoId() !== errorVideoId) {
+      if (box) { box.style.display = "none"; box.textContent = ""; }
+      errorVideoId = "";
+    }
+  }, 1000);
   ensureButton();
 })();
