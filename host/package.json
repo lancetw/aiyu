@@ -1,6 +1,6 @@
 {
   "name": "@lancetw/aiyu",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "Installs the native-messaging host for the aiyu Chrome extension, letting it call your local claude/codex/agy CLI to translate YouTube subtitles and selected text. Run: npx @lancetw/aiyu",
   "bin": {
