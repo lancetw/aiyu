@@ -24,6 +24,10 @@
   const PREROLL_SEC = 180; // 3 分鐘
 
   let active = false;
+  // 一次「start → 翻譯結束 / stop」的生命週期序號。stop() 與 start() 都會遞增 →
+  // 舊 run 的 in-flight worker / await 後續、catch handler 用 myRun === runSeq 判斷自己
+  // 是否仍是當前 run，避免「換片 → 舊 worker await 醒來時新 run 已啟動」的污染與誤報。
+  let runSeq = 0;
   let videoId = "";
   let cues = [];          // [{start,end,dur,text,zh}]
   let curIdx = -1;
@@ -1213,8 +1217,13 @@
   // 一段一段翻譯：每個小段落翻完就立刻更新顯示，不必等整支影片翻完。
   // 開頭的段落最先送、最先顯示；翻譯速度遠快於播放速度，後段會在播到前就備妥。
   async function translateAllCues() {
+    // 把當前 run 的 cues 抓進 closure：stop() 重指派模組層 cues 後，舊 in-flight worker
+    // 仍透過 cuesRef 寫到原陣列（之後 GC），不會污染新 run 的 cues；myRun + runSeq 比對則
+    // 讓舊 worker 在 await 醒來時自願退場。兩者合力封住「換片重翻 → 字幕翻譯失敗」race。
+    const myRun = runSeq;
+    const cuesRef = cues;
     const todoIdx = [];
-    cues.forEach((c, i) => {
+    cuesRef.forEach((c, i) => {
       if (c.zh === null && c.text) todoIdx.push(i);
     });
     if (!todoIdx.length) {
@@ -1236,8 +1245,8 @@
     const idxGroups = groupCues(todoIdx);
     const groupObjs = idxGroups.map((idxs) => ({
       idxs,
-      start: cues[idxs[0]].start,
-      end: cues[idxs[idxs.length - 1]].end || cues[idxs[0]].start + 1
+      start: cuesRef[idxs[0]].start,
+      end: cuesRef[idxs[idxs.length - 1]].end || cuesRef[idxs[0]].start + 1
     }));
     const scheduler = aiyuCreateScheduler(groupObjs, { retryCap: RETRY_CAP });
     const total = todoIdx.length;
@@ -1245,7 +1254,7 @@
     let quotaHit = false; // 偵測到額度用盡 → 立刻中止整輪，不再連敲已鎖額度的 CLI
     progressPct = 0;
     // 已拿到「真譯文」的句數（exhausted 回退原文是收尾時才設，迴圈中 zh!==null ⟺ 真譯文）
-    const realDone = () => todoIdx.reduce((a, i) => a + (cues[i].zh !== null ? 1 : 0), 0);
+    const realDone = () => todoIdx.reduce((a, i) => a + (cuesRef[i].zh !== null ? 1 : 0), 0);
 
     // 第一批翻好前顯示「連接 <模型> 中…」而非「翻譯中 0%」：claude 首呼叫要十幾~數十秒，
     // 0% 久不動會像當機，明講「正在連接哪個模型」較不焦慮。
@@ -1258,7 +1267,7 @@
     // 已翻好的句子會命中 SW 快取、不重打 CLI，只重打仍缺的句子。
     async function translateGroup(idxList) {
       if (!idxList.length) return { ok: true, failedIdxs: [] };
-      const segments = idxList.map((idx) => ({ id: String(idx), text: cues[idx].text }));
+      const segments = idxList.map((idx) => ({ id: String(idx), text: cuesRef[idx].text }));
 
       let resp = null;
       try {
@@ -1282,7 +1291,7 @@
       for (const idx of idxList) {
         const zh = byId.get(String(idx));
         // 非空字串才算真譯文；其餘（漏回 → undefined、SW 標的 null、空白）維持 null 待重試。
-        if (zh != null && String(zh).trim()) cues[idx].zh = String(zh);
+        if (zh != null && String(zh).trim()) cuesRef[idx].zh = String(zh);
         else failedIdxs.push(idx);
       }
       return { ok: failedIdxs.length === 0, failedIdxs };
@@ -1290,7 +1299,7 @@
 
     // 並行 CONCURRENCY 條（見下方常數）。scheduler 保證：失敗群組優先重排、重試到上限才放棄（永不無聲當作完成）。
     async function worker() {
-      while (active && !quotaHit) {
+      while (active && runSeq === myRun && !quotaHit) {
         const video = getVideo();
         const t = video ? video.currentTime : 0;
         const gi = scheduler.pickNext(t);
@@ -1302,13 +1311,13 @@
         const { ok } = await translateGroup(groupObjs[gi].idxs);
         if (quotaHit) return; // 額度用盡 → 立刻收工
         scheduler.record(gi, ok);
-        if (!active) return;
+        if (!active || runSeq !== myRun) return;
         curIdx = -1; // 可能剛翻好 → 立刻重畫目前字幕
         if (!ok) await sleep(RETRY_BACKOFF_MS); // 失敗後退避；下一輪 pickNext 會優先重挑此組
         // 緩衝足夠才從頭自動播放：開頭起連續翻好的字幕需覆蓋 ≥ PREROLL_SEC 秒。
         if (waiting && leadSeconds() >= PREROLL_SEC) resumePlayback();
         const rd = realDone();
-        if (active && rd < total) {
+        if (active && runSeq === myRun && rd < total) {
           progressPct = Math.round((rd / total) * 100);
           setBadgeProgress(`翻譯中 ${progressPct}%`);
           updateMenuState();
@@ -1321,7 +1330,7 @@
     // ＋額度偵測兜底，要回退只需調小此值（如 4→3）。
     const CONCURRENCY = 4;
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-    if (!active) return;
+    if (!active || runSeq !== myRun) return;
 
     // 診斷：印出實際錯誤字串，方便判斷是否被正確辨識為「額度用盡」
     if (firstError) console.warn("[aiyu] 翻譯結束有錯誤，firstError =", JSON.stringify(firstError));
@@ -1329,15 +1338,15 @@
     if (quotaHit) {
       // 額度用盡：右上角持續顯示、不自動淡出。未譯 cue 維持 null（不回退原文鎖死成英文），
       // 額度恢復後可用選單「重新翻譯」或下次啟動補回。
-      unresolvedCues = todoIdx.filter((i) => cues[i].zh === null);
+      unresolvedCues = todoIdx.filter((i) => cuesRef[i].zh === null);
       setBadge("⚠ 翻譯額度用盡，請稍後再試", "error");
     } else {
-      const unresolved = todoIdx.filter((i) => cues[i].zh === null);
+      const unresolved = todoIdx.filter((i) => cuesRef[i].zh === null);
       if (unresolved.length) {
         // 終局仍有未譯：大聲、持續、可點擊重試。未譯 cue 先回退原文顯示（可讀），但整體狀態
         // 明確「未完成」（徽章不淡出＋提供手動重試）—— 絕不偽裝成 ✓ 完成而靜默漏譯。
         unresolvedCues = unresolved.slice();
-        for (const i of unresolved) cues[i].zh = cues[i].text;
+        for (const i of unresolved) cuesRef[i].zh = cuesRef[i].text;
         curIdx = -1;
         setBadge(`⚠ ${unresolved.length} 句未翻譯，點此重試`, "error", retryUnresolved);
       } else {
@@ -1510,6 +1519,7 @@
   async function start() {
     if (active) return;
     active = true;
+    const myRun = ++runSeq;
     document.documentElement.dataset.aiyuActive = "1"; // 通知 yt-key-shim（main world）接管 C 鍵
     curIdx = -1;
     userHidden = false;
@@ -1531,7 +1541,7 @@
     setBadgeProgress("讀取字幕軌…");
     try {
       const pr = await fetchAndroidPlayer(videoId);
-      if (!active) return;
+      if (!active || runSeq !== myRun) return;
       const { track, allChinese } = pickTrack(pr);
       if (allChinese) {
         fail("此影片字幕本來就是中文，無需翻譯");
@@ -1544,7 +1554,7 @@
 
       setBadgeProgress("下載字幕內容…");
       cues = await fetchCues(track);
-      if (!active) return;
+      if (!active || runSeq !== myRun) return;
       if (!cues.length) {
         fail("字幕軌是空的，換一支有字幕的影片試試");
         return;
@@ -1563,12 +1573,14 @@
       setNativeCaptionsHidden(true); // 隱藏原生字幕，只留我們的雙語字幕框
       await translateAllCues();
     } catch (e) {
-      if (active) fail("字幕翻譯失敗：" + (e?.message || "未知錯誤"));
+      // epoch 守：避免「舊 run 的 worker 在新 start() 已起跑後才丟錯」誤把新 run 的狀態炸掉
+      if (active && runSeq === myRun) fail("字幕翻譯失敗：" + (e?.message || "未知錯誤"));
     }
   }
 
   function stop() {
     active = false;
+    runSeq++; // 任何舊 run 的 in-flight worker / catch handler 後續比對 runSeq 都會 mismatch
     delete document.documentElement.dataset.aiyuActive; // C 鍵交回 YouTube 原生切換
     waiting = false;
     userHidden = false;
