@@ -6,7 +6,8 @@
 
 一個專注於 **YouTube 字幕翻譯** 的 Chrome 擴充套件，呼叫本機的 `claude`、`codex` 或 `agy`（Antigravity）CLI，把字幕翻成 **台灣正體中文**（也可翻譯網頁上選取的文字）。
 
-> **狀態**：0.3.1
+> **狀態**：0.4.1
+> **Chrome Web Store**：[chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd](https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd)
 > **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
 
@@ -41,36 +42,31 @@
 
 ## 安裝
 
-### 1. 取得程式碼
+aiyu 由兩部分組成：**Chrome 擴充套件**（從 Web Store 安裝）＋ **本機 native host**（用 `npx` 一行裝起，讓擴充能呼叫你本機已登入的 AI CLI）。前者一鍵裝，後者**仍需本機有 `claude`／`codex`／`agy` 任一**，這是 aiyu 的設計界線（譯文只走你自己的帳號、不經任何開發者伺服器）。
 
-`git clone` 本專案，或下載 release zip 解壓到一個**固定位置**（之後別刪／別移動 —— 擴充以
-「載入未封裝」從這個資料夾執行）。需要本機有 `node`（裝過 `claude`／`codex` 多半已具備）。
+### 1. 從 Chrome Web Store 安裝擴充
+
+[chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd](https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd) → 加入 Chrome。Edge / Brave / Arc / Chromium 使用者可從 Chrome Web Store 同樣安裝（多數會詢問是否允許）。
+
+> 安裝完先不要點圖示 —— 還沒裝 native host，會顯示「連線失敗」。
 
 ### 2. 安裝 native host（跨平台：macOS / Linux / Windows）
 
+需要本機有 `node`（裝過 `claude`／`codex` 多半已具備）。執行：
+
 ```bash
-node host/install.js
+npx @lancetw/aiyu
 ```
 
 會自動：把 host 複製到穩定位置、產生 launcher（用當下 node 的絕對路徑啟動，不靠 shebang）、
 註冊 native messaging（mac/linux 寫各瀏覽器 `NativeMessagingHosts/` 目錄；Windows 寫
-`HKCU\…\NativeMessagingHosts` 登錄檔），最後印出載入擴充的步驟。偵測到的
-Chrome / Chrome Canary / Chromium / Edge / Brave / Arc 都會註冊。
+`HKCU\…\NativeMessagingHosts` 登錄檔）。偵測到的
+Chrome / Chrome Canary / Chromium / Edge / Brave / Arc 都會註冊（可加 `--browsers chrome,brave` 只裝特定幾個，或 `--all` 強制全裝）。
 
-- `node host/install.js --dry-run`：只印出會做什麼，不實際寫入。
-- `node host/install.js --uninstall`：移除 host 註冊。
+- `npx @lancetw/aiyu --dry-run`：只印出會做什麼，不實際寫入。
+- `npx @lancetw/aiyu --uninstall`：移除 host 註冊。
 
-### 3. 載入擴充（off-store / 載入未封裝）
-
-依 `install.js` 印出的步驟：
-
-1. 開啟 `chrome://extensions`
-2. 開啟 **「開發人員模式」**（請**保持開啟**，否則 Chrome 會停用未封裝擴充）
-3. 點 **「載入未封裝項目」**，選 `extension/` 資料夾
-4. 載入後顯示的 Extension ID 應為 `loelfpeedlfjbjekifhjbbgejajnnpan`（固定值，已烤進 host 的
-   `allowed_origins`，**不用手動複製貼上**）
-
-### 4. 確認 CLI 可用
+### 3. 確認 CLI 可用
 
 aiyu 預期下列任一執行檔已可呼叫：
 
@@ -88,19 +84,13 @@ export AIYU_AGY_PATH=/your/path/to/agy
 
 > Windows 提醒：`claude`／`codex` 多半是 npm 裝的 `.cmd`；host 已會自動找 `%APPDATA%\npm` 等位置與 `.cmd`/`.exe` 副檔名。
 
-### 5. 重啟瀏覽器
+### 4. 重啟瀏覽器
 
 關掉所有 Chrome 視窗再開（讓 Native Messaging 重新註冊）。
 
-### 6. 測試
+### 5. 測試
 
 點擴充套件圖示 → 「測試 host 連線」。應顯示「連線成功：aiyu-host」。
-
-> **修改後如何生效（重要）**
->
-> 前端與 host 的更新方式**不對稱**：
-> - **前端**（`extension/`：`youtube.js`、`sw.js`、`manifest.json`…）：`chrome://extensions` 重新載入 + **重整該分頁**即生效（content script 在頁面載入時注入，舊分頁不會自動更新）。
-> - **host**（`host/aiyu-host.js`）：**不會自動同步**到瀏覽器實際啟動的位置。改完必須重新部署：`node host/install.js`，再到 `chrome://extensions` 重新載入 aiyu（讓常駐的舊 host 行程退場、下次翻譯啟動新碼）。
 
 ---
 
@@ -132,7 +122,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 - 不做整篇網頁文章逐段翻譯（僅支援「選取文字」翻譯）
 - 不做語音辨識（YouTube 沒有字幕的影片就跳過）
 - 每次 CLI spawn 約 1–3 秒，首段翻譯會明顯停頓；後續段落因 cache + 並行較快
-- Native host 不能透過 Chrome Web Store 散布，使用者必須手動跑 `node host/install.js`
+- Native host 不能透過 Chrome Web Store 散布，使用者必須手動跑 `npx @lancetw/aiyu`
 
 ---
 
@@ -189,6 +179,23 @@ aiyu/
 aiyu **沒有開發者伺服器、不收集資料、不做分析或追蹤**。你要翻譯的文字只會交給「你自己安裝並登入」的 AI 工具（`claude`／`codex`／`agy`），由它在你自己的帳號下送往對應供應商（Anthropic／OpenAI／Google）。完整說明見 **[隱私權政策（PRIVACY.md）](PRIVACY.md)**。
 
 > host 的本機 log 只含操作性中繼資料（時間／模型／prompt 長度／錯誤），正常不含你的原文或譯文；想完全關閉寫檔可設 `AIYU_LOG=/dev/null`（Windows：`NUL`）。
+
+---
+
+## 從原始碼開發（off-store / 載入未封裝）
+
+想自己改 aiyu，或在 CWS 同步前先試新版，可以走 dev mode：
+
+1. `git clone` 本專案到一個**固定位置**（之後別刪／別移動 —— 擴充以「載入未封裝」從這個資料夾執行）。
+2. 跑 `node host/install.js` 安裝 host（同 `npx @lancetw/aiyu`，差別是從 repo 跑、改 host 後可重新部署）。
+3. 開 `chrome://extensions` → 開**「開發人員模式」**（請**保持開啟**，否則 Chrome 會停用未封裝擴充）→ 點**「載入未封裝項目」**選 `extension/` 資料夾。
+4. 載入後 Extension ID 應為 `loelfpeedlfjbjekifhjbbgejajnnpan`（固定值，已烤進 host 的 `allowed_origins`）；store 版的 ID 則為 `mkdjepnmcmmjbnhkligompoblagocjmd`，host 兩個 ID 都會接受（dual-ID）—— 兩版可並存但通常只裝一個。
+
+> **修改後如何生效（重要）**
+>
+> 前端與 host 的更新方式**不對稱**：
+> - **前端**（`extension/`：`youtube.js`、`sw.js`、`manifest.json`…）：`chrome://extensions` 重新載入 + **重整該分頁**即生效（content script 在頁面載入時注入，舊分頁不會自動更新）。
+> - **host**（`host/aiyu-host.js`）：**不會自動同步**到瀏覽器實際啟動的位置。改完必須重新部署：`node host/install.js`，再到 `chrome://extensions` 重新載入 aiyu（讓常駐的舊 host 行程退場、下次翻譯啟動新碼）。
 
 ---
 
