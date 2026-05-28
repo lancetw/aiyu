@@ -5,7 +5,7 @@
 // 全部走 classic 全域(self.AIYU)，故本檔不可用 import/export。
 (function (root) {
   // 2026 模型清單。預設為各 CLI 最強的版本。claude 用版本字串(claude-<家族>-<版本>)以明確標示版本。
-  // 版本字串(claude-haiku-4-5 / claude-sonnet-4-6 / claude-opus-4-7 / 4-6)由 claude CLI 本機 config 確認有效。
+  // 版本字串(claude-haiku-4-5 / claude-sonnet-4-6 / claude-opus-4-8 / 4-7 / 4-6)由 claude CLI 本機 config 確認有效。
   const MODELS = {
     codex: [
       { value: "gpt-5.4-mini", label: "GPT-5.4 mini（最快最省）" },
@@ -16,11 +16,12 @@
     claude: [
       { value: "claude-haiku-4-5", label: "Haiku 4.5（最快最省）" },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6（均衡）" },
-      { value: "claude-opus-4-7", label: "Opus 4.7（最強）" },
+      { value: "claude-opus-4-8", label: "Opus 4.8（最強）" },
+      { value: "claude-opus-4-7", label: "Opus 4.7" },
       { value: "claude-opus-4-6", label: "Opus 4.6" }
     ]
   };
-  const DEFAULT_MODEL = { codex: "gpt-5.5", claude: "claude-opus-4-7" };
+  const DEFAULT_MODEL = { codex: "gpt-5.5", claude: "claude-opus-4-8" };
 
   // 對岸詞→台灣詞用詞對照：注入翻譯 system prompt，由模型理解上下文取代，不做後處理字串替換。
   // 全新安裝即套用（sw.js getSettings 的 fallback）；使用者可在進階設定覆寫。
