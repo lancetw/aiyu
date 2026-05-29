@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aiyu — AI 譯語｜YouTube 雙語字幕翻譯</title>
+<meta name="description" content="aiyu（AI 譯語）是一款 Chrome 擴充，把 YouTube 字幕與網頁選取文字翻成台灣正體中文。譯文只走你自己登入的 AI CLI，零開發者伺服器、不收集、不追蹤，開源 MIT。">
+<link rel="canonical" href="https://lancetw.github.io/aiyu/">
+<meta name="theme-color" content="#FFF8EC">
+<meta property="og:type" content="website">
+<meta property="og:title" content="aiyu — AI 譯語｜YouTube 雙語字幕翻譯">
+<meta property="og:description" content="把 YouTube 字幕與網頁選取文字翻成台灣正體中文。譯文只走你自己登入的 AI CLI，零開發者伺服器、不收集、不追蹤，開源 MIT。">
+<meta property="og:image" content="https://lancetw.github.io/aiyu/assets/og.png">
+<meta property="og:url" content="https://lancetw.github.io/aiyu/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="aiyu — AI 譯語｜YouTube 雙語字幕翻譯">
+<meta name="twitter:description" content="把 YouTube 字幕與網頁選取文字翻成台灣正體中文。譯文只走你自己登入的 AI CLI，零開發者伺服器、不收集、不追蹤，開源 MIT。">
+<meta name="twitter:image" content="https://lancetw.github.io/aiyu/assets/og.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<style>
+  :root {
+    --honey-top: #FFF8EC;
+    --honey-bot: #FFE9C7;
+    --ink: #3A2E1E;
+    --ink-soft: #6B5B45;
+    --ink-faint: #92836B;
+    --amber: #E8920B;
+    --amber-light: #F5A623;
+    --amber-text: #8A5407;
+    --dark: #161210;
+    --dark-soft: #211B16;
+    --dark-line: #3A2F26;
+    --term-green: #7BE0A6;
+    --paper: #FFFDF8;
+    --card-border: rgba(58, 46, 30, 0.08);
+    --shadow-sm: 0 1px 2px rgba(58, 46, 30, 0.06), 0 2px 8px rgba(58, 46, 30, 0.05);
+    --shadow-md: 0 4px 12px rgba(58, 46, 30, 0.08), 0 12px 32px rgba(58, 46, 30, 0.08);
+    --shadow-lg: 0 8px 24px rgba(58, 46, 30, 0.10), 0 24px 64px rgba(186, 120, 20, 0.14);
+    --radius: 22px;
+    --radius-lg: 30px;
+    --radius-sm: 13px;
+    --maxw: 1180px;
+    --ease: cubic-bezier(.22, .61, .36, 1);
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--honey-top);
+    line-height: 1.7;
+    font-size: 17px;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3 { line-height: 1.18; letter-spacing: -0.01em; font-weight: 800; margin: 0; }
+  p { margin: 0; }
+  a { color: inherit; text-decoration: none; }
+
+  code, kbd, .mono {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Focus visibility (a11y) ---------- */
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2.5px solid var(--amber); outline-offset: 3px; border-radius: 6px;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    font: inherit; font-weight: 700; letter-spacing: 0.01em;
+    border: 0; border-radius: 999px; cursor: pointer;
+    padding: 14px 26px; line-height: 1; white-space: nowrap;
+    transition: transform .25s var(--ease), box-shadow .25s var(--ease), background .25s var(--ease);
+  }
+  .btn-primary {
+    color: var(--ink);
+    background: linear-gradient(135deg, var(--amber-light), var(--amber));
+    box-shadow: 0 6px 18px rgba(232, 146, 11, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(232, 146, 11, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.45); }
+  .btn-ghost {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.6);
+    box-shadow: inset 0 0 0 1.5px rgba(58, 46, 30, 0.16);
+  }
+  .btn-ghost:hover { background: #fff; transform: translateY(-2px); box-shadow: inset 0 0 0 1.5px rgba(58, 46, 30, 0.28), var(--shadow-sm); }
+  .btn-lg { padding: 17px 34px; font-size: 1.04rem; }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+
+  /* ---------- Nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(255, 248, 236, 0.82);
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    backdrop-filter: saturate(160%) blur(14px);
+    border-bottom: 1px solid rgba(58, 46, 30, 0.07);
+  }
+  .nav-inner { display: flex; align-items: center; gap: 18px; height: 68px; }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; font-size: 1.28rem; letter-spacing: -0.02em; flex: none; }
+  .brand img { width: 38px; height: 38px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(186, 120, 20, 0.25)); }
+  .brand .wm { display: inline-flex; }
+  .brand .yu { color: var(--amber); }
+  .nav-links { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  .nav-links a.lnk {
+    padding: 9px 14px; border-radius: 11px; font-weight: 600; font-size: 0.97rem; color: var(--ink-soft);
+    transition: color .2s, background .2s;
+  }
+  .nav-links a.lnk:hover { color: var(--ink); background: rgba(232, 146, 11, 0.1); }
+  .nav-links .sep { width: 1px; height: 22px; background: rgba(58, 46, 30, 0.14); margin: 0 6px; }
+  .nav-icon { display: inline-flex; padding: 9px; border-radius: 11px; color: var(--ink-soft); transition: color .2s, background .2s; }
+  .nav-icon:hover { color: var(--ink); background: rgba(232, 146, 11, 0.1); }
+  .nav-icon svg { width: 21px; height: 21px; display: block; }
+
+  .hamburger {
+    display: none; margin-left: auto; width: 44px; height: 44px; border: 0; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.5); box-shadow: inset 0 0 0 1.5px rgba(58, 46, 30, 0.14);
+    cursor: pointer; padding: 0; align-items: center; justify-content: center;
+  }
+  .hamburger span { display: block; width: 20px; height: 2px; background: var(--ink); border-radius: 2px; position: relative; transition: transform .3s var(--ease), opacity .2s; }
+  .hamburger span::before, .hamburger span::after { content: ""; position: absolute; left: 0; width: 20px; height: 2px; background: var(--ink); border-radius: 2px; transition: transform .3s var(--ease); }
+  .hamburger span::before { top: -6px; }
+  .hamburger span::after { top: 6px; }
+  .nav.open .hamburger span { background: transparent; }
+  .nav.open .hamburger span::before { transform: translateY(6px) rotate(45deg); }
+  .nav.open .hamburger span::after { transform: translateY(-6px) rotate(-45deg); }
+
+  /* ---------- Sections ---------- */
+  main { display: block; }
+  section { position: relative; }
+  .pad { padding: clamp(64px, 9vw, 116px) 0; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 0.82rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--amber-text); margin-bottom: 18px;
+  }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: var(--amber-text); border-radius: 2px; }
+  .sec-head { max-width: 680px; margin-bottom: clamp(38px, 5vw, 60px); }
+  .sec-head h2 { font-size: clamp(1.85rem, 4.2vw, 2.85rem); }
+  .sec-head p { margin-top: 16px; font-size: 1.1rem; color: var(--ink-soft); }
+
+  /* ---------- Hero ---------- */
+  .hero { background: linear-gradient(168deg, var(--honey-top) 0%, var(--honey-bot) 100%); overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; top: -28%; right: -12%; width: 620px; height: 620px;
+    background: radial-gradient(circle, rgba(245, 166, 35, 0.22), transparent 66%);
+    pointer-events: none; z-index: 0;
+  }
+  .hero-grid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: clamp(32px, 5vw, 72px); align-items: center; position: relative; z-index: 1; }
+  .hero-copy h1 {
+    font-size: clamp(2.3rem, 5.4vw, 3.75rem); font-weight: 900; letter-spacing: -0.025em; line-height: 1.1;
+  }
+  .hero-copy h1 .accent {
+    background: linear-gradient(120deg, var(--amber-text), #A8650A);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero-sub { margin-top: 22px; font-size: clamp(1.05rem, 2vw, 1.22rem); color: var(--ink-soft); max-width: 520px; line-height: 1.65; }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 0.86rem; font-weight: 600; color: var(--ink-soft);
+    padding: 7px 14px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.66); box-shadow: inset 0 0 0 1px rgba(58, 46, 30, 0.08);
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; }
+
+  .hero-art { position: relative; display: flex; justify-content: center; align-items: center; }
+  .hero-art .glow {
+    position: absolute; width: 78%; aspect-ratio: 1; border-radius: 50%;
+    background: radial-gradient(circle, rgba(245, 166, 35, 0.34), transparent 64%);
+    filter: blur(12px); z-index: 0;
+  }
+  .hero-art img {
+    position: relative; z-index: 1; width: 100%; max-width: 420px; height: auto;
+    filter: drop-shadow(0 26px 44px rgba(186, 120, 20, 0.34));
+    animation: float 6.5s var(--ease) infinite;
+  }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+
+  /* ---------- Product shot ---------- */
+  .shot-frame {
+    border-radius: var(--radius-lg); overflow: hidden;
+    box-shadow: var(--shadow-lg); background: var(--paper);
+    padding: 10px; border: 1px solid var(--card-border);
+  }
+  .shot-frame img { display: block; width: 100%; height: auto; border-radius: calc(var(--radius-lg) - 12px); }
+  .surfaces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 34px; }
+  .surface { display: flex; gap: 13px; align-items: flex-start; }
+  .surface .num {
+    flex: none; width: 30px; height: 30px; border-radius: 9px;
+    display: grid; place-items: center; font-weight: 800; font-size: 0.92rem;
+    color: var(--amber); background: rgba(232, 146, 11, 0.13);
+  }
+  .surface h3 { font-size: 1.02rem; font-weight: 700; }
+  .surface p { font-size: 0.94rem; color: var(--ink-soft); margin-top: 4px; line-height: 1.55; }
+
+  /* ---------- Features ---------- */
+  .features { background: linear-gradient(180deg, var(--honey-bot) 0%, var(--honey-top) 40%); }
+  .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .card {
+    background: var(--paper); border-radius: var(--radius); padding: 32px 30px;
+    border: 1px solid var(--card-border); box-shadow: var(--shadow-sm);
+    transition: transform .3s var(--ease), box-shadow .3s var(--ease);
+  }
+  .card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+  .card .ic {
+    width: 50px; height: 50px; border-radius: 15px; display: grid; place-items: center; margin-bottom: 19px;
+    background: linear-gradient(140deg, rgba(245, 166, 35, 0.2), rgba(232, 146, 11, 0.13));
+    color: var(--amber);
+  }
+  .card .ic svg { width: 26px; height: 26px; }
+  .card h3 { font-size: 1.18rem; font-weight: 800; }
+  .card p { margin-top: 11px; font-size: 0.97rem; color: var(--ink-soft); line-height: 1.62; }
+
+  /* ---------- Dark band ---------- */
+  .dark {
+    background: var(--dark); color: #EFE6D8;
+    border-radius: clamp(28px, 4vw, 48px) clamp(28px, 4vw, 48px) 0 0;
+  }
+  .dark .eyebrow { color: var(--amber-light); }
+  .dark .eyebrow::before { background: var(--amber-light); }
+  .dark .sec-head h2 { color: #FBF3E6; }
+  .thesis {
+    font-size: clamp(1.35rem, 2.8vw, 1.95rem); font-weight: 800; line-height: 1.4;
+    max-width: 880px; letter-spacing: -0.015em; color: #FBF3E6;
+  }
+  .thesis em { font-style: normal; color: var(--term-green); }
+
+  .arch {
+    display: flex; align-items: stretch; flex-wrap: wrap; gap: 12px; margin-top: 46px;
+  }
+  .arch-node {
+    flex: 1 1 0; min-width: 150px;
+    background: var(--dark-soft); border: 1px solid var(--dark-line); border-radius: 16px;
+    padding: 20px 18px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .arch-node .role { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--amber-light); }
+  .arch-node .name { font-weight: 700; font-size: 1.02rem; color: #FBF3E6; }
+  .arch-node .meta { font-size: 0.82rem; color: #B0A18C; }
+  .arch-node.accent { border-color: rgba(123, 224, 166, 0.4); background: linear-gradient(160deg, rgba(123, 224, 166, 0.08), var(--dark-soft)); }
+  .arch-node.accent .name { color: var(--term-green); }
+  .arch-arrow {
+    flex: none; align-self: center; display: grid; place-items: center;
+    color: var(--amber); font-size: 0.78rem; font-weight: 700; min-width: 56px; gap: 3px;
+  }
+  .arch-arrow .ln { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 0.68rem; color: #B0A18C; letter-spacing: 0.04em; }
+  .arch-arrow svg { width: 100%; max-width: 48px; height: 14px; }
+
+  .dark-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(28px, 4vw, 52px); margin-top: 52px; align-items: start; }
+  .term-intro { color: #B0A18C; margin-bottom: 16px; font-size: 1rem; line-height: 1.7; }
+
+  .terminal {
+    background: #0C0907; border: 1px solid var(--dark-line); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+  }
+  .terminal-bar { display: flex; align-items: center; gap: 7px; padding: 13px 16px; background: #1A1411; border-bottom: 1px solid var(--dark-line); }
+  .terminal-bar .tdot { width: 11px; height: 11px; border-radius: 50%; }
+  .terminal-bar .tdot.r { background: #FF5F57; }
+  .terminal-bar .tdot.y { background: #FEBC2E; }
+  .terminal-bar .tdot.g { background: #28C840; }
+  .terminal-bar .tlabel { margin-left: 8px; font-size: 0.78rem; color: #B0A18C; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+  .terminal-body { padding: 22px 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .terminal-cmd { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 1.02rem; color: #EFE6D8; min-width: 0; overflow-wrap: anywhere; }
+  .terminal-cmd .prompt { color: var(--term-green); margin-right: 10px; -webkit-user-select: none; user-select: none; }
+  .copy-btn {
+    flex: none; font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+    color: #EFE6D8; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--dark-line);
+    border-radius: 9px; padding: 8px 14px; display: inline-flex; align-items: center; gap: 6px;
+    transition: background .2s, color .2s, border-color .2s;
+  }
+  .copy-btn:hover { background: rgba(123, 224, 166, 0.14); border-color: rgba(123, 224, 166, 0.4); }
+  .copy-btn.done { color: var(--term-green); border-color: rgba(123, 224, 166, 0.5); }
+  .copy-btn svg { width: 15px; height: 15px; }
+
+  .priv-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 18px; }
+  .priv-list li { display: flex; gap: 13px; align-items: flex-start; }
+  .priv-list .pk { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(123, 224, 166, 0.15); color: var(--term-green); margin-top: 2px; }
+  .priv-list .pk svg { width: 15px; height: 15px; }
+  .priv-list h3 { font-size: 1.01rem; font-weight: 700; color: #FBF3E6; }
+  .priv-list p { font-size: 0.9rem; color: #BEB09B; margin-top: 3px; line-height: 1.55; }
+
+  /* ---------- Install ---------- */
+  .install { background: linear-gradient(180deg, var(--honey-top) 0%, var(--honey-bot) 100%); }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .step {
+    background: var(--paper); border-radius: var(--radius); padding: 30px 28px;
+    border: 1px solid var(--card-border); box-shadow: var(--shadow-sm); position: relative;
+    display: flex; flex-direction: column;
+  }
+  .step .sn {
+    width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+    font-weight: 900; font-size: 1.2rem; color: var(--ink); margin-bottom: 18px;
+    background: linear-gradient(140deg, var(--amber-light), var(--amber));
+    box-shadow: 0 5px 14px rgba(232, 146, 11, 0.32);
+  }
+  .step h3 { font-size: 1.16rem; font-weight: 800; }
+  .step p { margin-top: 10px; font-size: 0.96rem; color: var(--ink-soft); line-height: 1.6; }
+  .step .step-action { margin-top: auto; padding-top: 20px; }
+  .step-action .btn { width: 100%; }
+  .mini-term {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--dark); border-radius: 12px; padding: 12px 14px; margin-top: 16px;
+  }
+  .mini-term code { color: #EFE6D8; font-size: 0.92rem; }
+  .mini-term code .prompt { color: var(--term-green); margin-right: 8px; }
+  .mini-copy {
+    flex: none; cursor: pointer; font: inherit; font-size: 0.78rem; font-weight: 700;
+    color: #EFE6D8; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--dark-line);
+    border-radius: 8px; padding: 6px 11px; transition: background .2s, color .2s;
+  }
+  .mini-copy:hover { background: rgba(123, 224, 166, 0.16); }
+  .mini-copy.done { color: var(--term-green); }
+  .callout {
+    margin-top: 30px; display: flex; gap: 15px; align-items: flex-start;
+    background: rgba(232, 146, 11, 0.09); border: 1px solid rgba(232, 146, 11, 0.22);
+    border-radius: var(--radius-sm); padding: 20px 24px;
+  }
+  .callout .ck { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(232, 146, 11, 0.16); color: var(--amber); }
+  .callout .ck svg { width: 19px; height: 19px; }
+  .callout p { font-size: 0.97rem; color: var(--ink-soft); line-height: 1.62; }
+  .callout strong { color: var(--ink); }
+
+  /* ---------- FAQ ---------- */
+  .faq-list { max-width: 820px; }
+  details.faq {
+    border-bottom: 1px solid rgba(58, 46, 30, 0.13);
+  }
+  details.faq summary {
+    list-style: none; cursor: pointer; padding: 24px 48px 24px 4px; position: relative;
+    font-weight: 700; font-size: 1.12rem; color: var(--ink); line-height: 1.45;
+  }
+  details.faq summary::-webkit-details-marker { display: none; }
+  details.faq summary::after {
+    content: ""; position: absolute; right: 8px; top: 50%; width: 12px; height: 12px;
+    border-right: 2.4px solid var(--amber); border-bottom: 2.4px solid var(--amber);
+    transform: translateY(-65%) rotate(45deg); transition: transform .3s var(--ease);
+  }
+  details.faq[open] summary::after { transform: translateY(-30%) rotate(225deg); }
+  details.faq summary:hover { color: var(--amber); }
+  details.faq .ans { padding: 0 48px 26px 4px; color: var(--ink-soft); font-size: 1rem; line-height: 1.7; }
+  details.faq .ans code { background: rgba(58, 46, 30, 0.07); padding: 2px 7px; border-radius: 6px; font-size: 0.9em; color: var(--ink); }
+
+  /* ---------- Footer ---------- */
+  footer { background: var(--dark); color: #C9BCA9; padding: 56px 0 40px; }
+  .foot-top { display: flex; flex-wrap: wrap; gap: 28px; align-items: center; justify-content: space-between; }
+  .foot-brand { display: flex; align-items: center; gap: 13px; }
+  .foot-brand img { width: 46px; height: 46px; object-fit: contain; }
+  .foot-brand .ft-name { font-weight: 800; font-size: 1.2rem; color: #FBF3E6; }
+  .foot-brand .ft-name span { color: var(--amber-light); }
+  .foot-brand .ft-tag { font-size: 0.86rem; color: #B0A18C; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 8px 6px; }
+  .foot-links a {
+    font-size: 0.92rem; font-weight: 600; color: #C9BCA9; padding: 8px 13px; border-radius: 9px;
+    transition: color .2s, background .2s;
+  }
+  .foot-links a:hover { color: #FBF3E6; background: rgba(255, 255, 255, 0.06); }
+  .foot-bot {
+    margin-top: 36px; padding-top: 26px; border-top: 1px solid var(--dark-line);
+    display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; justify-content: space-between;
+    font-size: 0.86rem; color: #A2937F;
+  }
+  .foot-bot .ver { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* ---------- Reveal animation ---------- */
+  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 920px) {
+    .hero-grid { grid-template-columns: 1fr; text-align: center; }
+    .hero-copy { order: 2; }
+    .hero-art { order: 1; }
+    .hero-art img { max-width: 290px; }
+    .hero-sub { margin-left: auto; margin-right: auto; }
+    .hero-cta, .chips { justify-content: center; }
+    .hero::before { right: -30%; top: -10%; }
+    .feat-grid, .steps, .surfaces { grid-template-columns: repeat(2, 1fr); }
+    .dark-grid { grid-template-columns: 1fr; }
+    .arch-arrow { transform: rotate(90deg); min-width: 0; padding: 4px 0; }
+    .arch-node { flex-basis: 100%; }
+    .arch { flex-direction: column; }
+  }
+
+  @media (max-width: 920px) {
+    .nav-links {
+      position: absolute; top: 68px; left: 0; right: 0;
+      flex-direction: column; align-items: stretch; gap: 2px;
+      background: rgba(255, 248, 236, 0.97);
+      -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+      padding: 14px 18px 22px; margin: 0;
+      border-bottom: 1px solid rgba(58, 46, 30, 0.1);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-12px); opacity: 0; pointer-events: none;
+      transition: transform .28s var(--ease), opacity .28s var(--ease);
+    }
+    .nav.open .nav-links { transform: none; opacity: 1; pointer-events: auto; }
+    .nav-links a.lnk { padding: 13px 14px; font-size: 1.04rem; border-radius: 12px; }
+    .nav-links .sep { display: none; }
+    .nav-links .nav-icon { padding: 13px 14px; border-radius: 12px; }
+    .nav-links .nav-icon svg { margin-right: 8px; }
+    .nav-links .btn { margin-top: 8px; width: 100%; }
+    .hamburger { display: inline-flex; }
+  }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .feat-grid, .steps, .surfaces { grid-template-columns: 1fr; }
+    .wrap { padding: 0 18px; }
+    .terminal-body { flex-direction: column; align-items: stretch; }
+    .copy-btn { justify-content: center; }
+    .copy-btn, .mini-copy { min-height: 44px; }
+    .foot-links a { padding: 11px 14px; }
+    .foot-top { flex-direction: column; align-items: flex-start; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .hero-art img { animation: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    * { transition-duration: 0.001ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a href="#top" class="brand" aria-label="aiyu 首頁">
+      <picture>
+        <source srcset="assets/logo.webp" type="image/webp">
+        <img src="assets/logo.png" alt="aiyu 愛玉吉祥物" width="38" height="38">
+      </picture>
+      <span class="wm">ai<span class="yu">yu</span></span>
+    </a>
+    <button class="hamburger" id="hamburger" aria-label="開啟選單" aria-expanded="false" aria-controls="navlinks">
+      <span></span>
+    </button>
+    <nav class="nav-links" id="navlinks" aria-label="主選單">
+      <a class="lnk" href="#features">功能</a>
+      <a class="lnk" href="#how">原理</a>
+      <a class="lnk" href="#install">安裝</a>
+      <a class="lnk" href="#faq">FAQ</a>
+      <span class="sep" aria-hidden="true"></span>
+      <a class="nav-icon" href="https://github.com/lancetw/aiyu" target="_blank" rel="noopener" aria-label="GitHub 原始碼">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-1.8c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+      </a>
+      <a class="btn btn-primary" href="https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.4" stroke="currentColor" stroke-width="1.7"/><path d="M12 8.6h8M9 10.6 5 4.2M12.6 15.3 8.6 21.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        加入 Chrome
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero pad">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow">AI 譯語 · 本機翻譯</span>
+        <h1>讓你<span class="accent">自己的 AI</span>，<br>翻你看的字幕</h1>
+        <p class="hero-sub">YouTube 雙語字幕，加上任意網頁的選取翻譯，全部譯成台灣正體中文。譯文只走你本機登入的 AI，零開發者伺服器。</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.4" stroke="currentColor" stroke-width="1.7"/><path d="M12 8.6h8M9 10.6 5 4.2M12.6 15.3 8.6 21.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            加入 Chrome
+          </a>
+          <a class="btn btn-ghost btn-lg" href="#how">看運作原理</a>
+        </div>
+        <div class="chips">
+          <span class="chip"><span class="dot" aria-hidden="true"></span>繁中台灣</span>
+          <span class="chip"><span class="dot" aria-hidden="true"></span>不收資料</span>
+          <span class="chip"><span class="dot" aria-hidden="true"></span>開源 MIT</span>
+          <span class="chip"><span class="dot" aria-hidden="true"></span>macOS／Linux（Windows 實驗中）</span>
+        </div>
+      </div>
+      <div class="hero-art">
+        <span class="glow" aria-hidden="true"></span>
+        <picture>
+          <source srcset="assets/logo.webp" type="image/webp">
+          <img src="assets/logo.png" alt="aiyu 愛玉凍吉祥物，圓潤金黃帶著微笑與紅暈" width="420" height="352">
+        </picture>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCT SHOT -->
+  <section class="pad" aria-labelledby="shot-h">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">實際畫面</span>
+        <h2 id="shot-h">三個翻譯介面，一次看懂</h2>
+        <p>從播放器到逐字稿，再到任意網頁的選取文字，aiyu 把翻譯放在你目光所及之處。</p>
+      </div>
+      <div class="shot-frame reveal">
+        <picture>
+          <source srcset="assets/screenshot.webp" type="image/webp">
+          <img src="assets/screenshot.jpg" alt="YouTube 雙語字幕實際畫面：播放器底部中英字幕、右側中英對照逐字稿面板、左側選取文字翻譯浮動視窗" width="1600" height="631" loading="lazy">
+        </picture>
+      </div>
+      <div class="surfaces">
+        <div class="surface reveal">
+          <span class="num" aria-hidden="true">1</span>
+          <div>
+            <h3>播放器雙語字幕</h3>
+            <p>原文在上、譯文在下，直接疊在影片上，可拖曳、滾輪縮放。</p>
+          </div>
+        </div>
+        <div class="surface reveal">
+          <span class="num" aria-hidden="true">2</span>
+          <div>
+            <h3>中英對照逐字稿</h3>
+            <p>右側面板隨播放自動跟隨高亮，點句即可跳轉、可搜尋。</p>
+          </div>
+        </div>
+        <div class="surface reveal">
+          <span class="num" aria-hidden="true">3</span>
+          <div>
+            <h3>選取文字翻譯</h3>
+            <p>在任意網頁圈選文字，左側浮動視窗立刻給出台灣正體中文。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features pad" id="features" aria-labelledby="feat-h">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">功能</span>
+        <h2 id="feat-h">為看影片、讀網頁而生的翻譯體驗</h2>
+        <p>不只是把字翻出來——它理解情境，給你讀得順、查得到、留得下的譯文。</p>
+      </div>
+      <div class="feat-grid">
+        <article class="card reveal">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="3.5"/><path d="m10 9 5 3-5 3z"/></svg></div>
+          <h3>YouTube 雙語字幕</h3>
+          <p>原文與譯文同框疊加在播放器上，字幕框可自由拖曳、用滾輪縮放，怎麼看都順眼。</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 10h11M4 15h16M4 20h9"/><circle cx="19" cy="18.5" r="2.6"/></svg></div>
+          <h3>中英對照逐字稿</h3>
+          <p>側邊逐字稿自動跟隨高亮、點句跳轉、可關鍵字搜尋，還能下載雙語 SRT 字幕檔。</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16M4 12h16M4 17.5h9"/><path d="m15.5 17 2.2 2.2L22 15"/></svg></div>
+          <h3>任意網頁選取翻譯</h3>
+          <p>圈選任意文字即跳出浮動視窗，支援譯上原下或左右並排，並可在結果裡搜尋關鍵字。</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M9 4v3M6.5 7c0 5-2.5 8-4 9.5M8 11c1 2.5 3 4 5 5"/><path d="m13.5 20 4-9 4 9M15 17h5"/></svg></div>
+          <h3>台灣正體中文</h3>
+          <p>譯文用道地台灣用語，並可選擇啟用台灣詞庫，讓專有名詞與口語更貼近在地語感。</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/><path d="M18 3.5a3 3 0 0 1 0 5.5"/></svg></div>
+          <h3>譯者人格切換</h3>
+          <p>字幕走即時口譯、抓得住節奏；選取文字則切換成資深翻譯記者，斟酌字句、講究通順。</p>
+        </article>
+        <article class="card reveal">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8 4 12l4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg></div>
+          <h3>多後端可選</h3>
+          <p>支援 claude、codex、agy 三種本機 AI CLI，用你已經登入、慣用的那一個就好。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS + PRIVACY (DARK) -->
+  <section class="dark pad" id="how" aria-labelledby="how-h">
+    <div class="wrap">
+      <div class="sec-head reveal" style="max-width:none;">
+        <span class="eyebrow">運作原理</span>
+        <h2 id="how-h">譯文走哪條路，你說了算</h2>
+      </div>
+      <p class="thesis reveal">譯文只走<em>你自己登入的 AI CLI</em>——沒有開發者伺服器、不收集、不追蹤。</p>
+
+      <div class="arch reveal" role="img" aria-label="架構流程：Chrome 擴充透過 stdio 連到 aiyu-host，再以 exec 呼叫 claude、codex 或 agy，最後送往你自己帳號的供應商">
+        <div class="arch-node">
+          <span class="role">前端</span>
+          <span class="name">Chrome 擴充</span>
+          <span class="meta">Manifest V3</span>
+        </div>
+        <div class="arch-arrow" aria-hidden="true"><span class="ln">stdio</span><svg viewBox="0 0 48 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h42M38 3l5 4-5 4"/></svg></div>
+        <div class="arch-node">
+          <span class="role">本機橋接</span>
+          <span class="name">aiyu-host</span>
+          <span class="meta">Node.js</span>
+        </div>
+        <div class="arch-arrow" aria-hidden="true"><span class="ln">exec</span><svg viewBox="0 0 48 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h42M38 3l5 4-5 4"/></svg></div>
+        <div class="arch-node accent">
+          <span class="role">本機 AI CLI</span>
+          <span class="name">claude · codex · agy</span>
+          <span class="meta">claude -p／codex exec／agy -p</span>
+        </div>
+        <div class="arch-arrow" aria-hidden="true"><span class="ln">你的帳號</span><svg viewBox="0 0 48 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h42M38 3l5 4-5 4"/></svg></div>
+        <div class="arch-node">
+          <span class="role">供應商</span>
+          <span class="name">你的帳號</span>
+          <span class="meta">用你自己的額度</span>
+        </div>
+      </div>
+
+      <div class="dark-grid">
+        <div class="reveal">
+          <p class="term-intro">想試一下？安裝 native host 只要一行指令，全程在你本機執行：</p>
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="tdot r" aria-hidden="true"></span><span class="tdot y" aria-hidden="true"></span><span class="tdot g" aria-hidden="true"></span>
+              <span class="tlabel">終端機 — zsh</span>
+            </div>
+            <div class="terminal-body">
+              <span class="terminal-cmd"><span class="prompt" aria-hidden="true">$</span><span id="cmd-main">npx @lancetw/aiyu</span></span>
+              <button class="copy-btn" type="button" data-copy="npx @lancetw/aiyu" aria-label="複製安裝指令 npx @lancetw/aiyu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
+                <span class="copy-label">複製</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <ul class="priv-list reveal">
+          <li>
+            <span class="pk" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></span>
+            <div><h3>沒有開發者伺服器</h3><p>整條翻譯鏈路不經過我們的任何主機，譯文不會在路上被誰看到。</p></div>
+          </li>
+          <li>
+            <span class="pk" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></span>
+            <div><h3>本機 log 只留中繼資料</h3><p>記錄僅限操作層級的中繼資料，存在你本機、可隨時關閉。</p></div>
+          </li>
+          <li>
+            <span class="pk" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></span>
+            <div><h3>開源可稽核</h3><p>全部程式以 MIT 授權公開，每一行都攤在 GitHub 上供你檢視。</p></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section class="install pad" id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">安裝</span>
+        <h2 id="install-h">兩步裝好，第三步確認連線</h2>
+        <p>擴充負責介面、native host 負責呼叫你本機的 AI——兩邊合起來就能開始翻譯。</p>
+      </div>
+      <div class="steps">
+        <div class="step reveal">
+          <span class="sn" aria-hidden="true">1</span>
+          <h3>安裝 Chrome 擴充</h3>
+          <p>從 Chrome Web Store 一鍵安裝，支援 Chrome／Chromium／Edge／Brave／Arc。</p>
+          <div class="step-action">
+            <a class="btn btn-primary" href="https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd" target="_blank" rel="noopener">前往 Chrome Web Store</a>
+          </div>
+        </div>
+        <div class="step reveal">
+          <span class="sn" aria-hidden="true">2</span>
+          <h3>安裝 native host</h3>
+          <p>在終端機跑一行 npx 指令，安裝本機橋接程式，跨平台、不需編譯。</p>
+          <div class="step-action">
+            <div class="mini-term">
+              <code><span class="prompt" aria-hidden="true">$</span>npx @lancetw/aiyu</code>
+              <button class="mini-copy" type="button" data-copy="npx @lancetw/aiyu" aria-label="複製安裝指令 npx @lancetw/aiyu">複製</button>
+            </div>
+          </div>
+        </div>
+        <div class="step reveal">
+          <span class="sn" aria-hidden="true">3</span>
+          <h3>確認連線</h3>
+          <p>確定本機已裝好 claude／codex／agy 任一並登入，重啟瀏覽器，點工具列圖示測試連線。</p>
+        </div>
+      </div>
+      <div class="callout reveal">
+        <span class="ck" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg></span>
+        <p><strong>為什麼要兩步？</strong>這是刻意的設計界線：譯文只走你自己帳號的 AI CLI，所以需要你本機那個已登入的程式。多裝一行指令，換來的是譯文完全不經過任何開發者伺服器。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="pad" id="faq" aria-labelledby="faq-h">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">常見問題</span>
+        <h2 id="faq-h">還在猶豫？這些先看看</h2>
+      </div>
+      <div class="faq-list">
+        <details class="faq reveal">
+          <summary>為什麼需要本機的 AI CLI？</summary>
+          <div class="ans">因為 aiyu 沒有自己的翻譯伺服器。它把翻譯工作交給你本機已登入的 AI CLI（claude／codex／agy），譯文因此完全不經過開發者，這也是它能做到「不收資料」的根本原因。</div>
+        </details>
+        <details class="faq reveal">
+          <summary>要另外付費嗎？</summary>
+          <div class="ans">aiyu 本身免費、開源。翻譯用的是你自己 AI 帳號的額度，所以費用（若有）取決於你使用的 CLI 與方案，aiyu 不向你收任何費用、也不經手任何付款。</div>
+        </details>
+        <details class="faq reveal">
+          <summary>支援哪些瀏覽器？</summary>
+          <div class="ans">支援以 Chromium 為核心的瀏覽器，包括 Chrome、Chromium、Edge、Brave 與 Arc。從 Chrome Web Store 安裝即可。</div>
+        </details>
+        <details class="faq reveal">
+          <summary>Windows 能用嗎？</summary>
+          <div class="ans">安裝器本身是跨平台的，Windows 目前屬於實驗階段。穩定支援的平台是 macOS 與 Linux，Windows 使用者可以嘗試，但體驗尚未保證。</div>
+        </details>
+        <details class="faq reveal">
+          <summary>沒有字幕的影片可以翻嗎？</summary>
+          <div class="ans">不行。aiyu 翻譯的是影片既有的字幕軌，不做語音辨識。遇到完全沒有字幕的影片，它會直接跳過，不會硬翻。</div>
+        </details>
+        <details class="faq reveal">
+          <summary>我的資料安全嗎？</summary>
+          <div class="ans">譯文不經過任何開發者伺服器，整條鏈路在你本機與你自己的 AI 帳號之間完成。本機 log 僅記錄操作中繼資料且可關閉，全部程式以 MIT 授權開源、可自行稽核。</div>
+        </details>
+        <details class="faq reveal">
+          <summary>怎麼解除安裝？</summary>
+          <div class="ans">在瀏覽器移除 aiyu 擴充，再於終端機執行 <code>npx @lancetw/aiyu --uninstall</code> 移除 native host，即可完整清除。</div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer aria-labelledby="foot-h">
+  <h2 id="foot-h" class="visually-hidden">頁尾與連結</h2>
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <picture>
+          <source srcset="assets/logo.webp" type="image/webp">
+          <img src="assets/logo.png" alt="aiyu 愛玉吉祥物" width="46" height="46" loading="lazy">
+        </picture>
+        <div>
+          <div class="ft-name">ai<span>yu</span> · AI 譯語</div>
+          <div class="ft-tag">讓你自己的 AI，翻你看的字幕</div>
+        </div>
+      </div>
+      <nav class="foot-links" aria-label="頁尾連結">
+        <a href="https://github.com/lancetw/aiyu" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd" target="_blank" rel="noopener">Chrome Web Store</a>
+        <a href="https://github.com/lancetw/aiyu/blob/master/PRIVACY.md" target="_blank" rel="noopener">隱私權政策</a>
+        <a href="https://github.com/lancetw/aiyu/blob/master/LICENSE" target="_blank" rel="noopener">授權 MIT</a>
+        <a href="https://www.npmjs.com/package/@lancetw/aiyu" target="_blank" rel="noopener">npm</a>
+      </nav>
+    </div>
+    <div class="foot-bot">
+      <span>© 2026 lancetw · 以 MIT 授權釋出</span>
+      <span class="ver">aiyu v0.4.3</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // ---- Mobile nav toggle ----
+  var nav = document.getElementById('nav');
+  var burger = document.getElementById('hamburger');
+  if (burger && nav) {
+    burger.addEventListener('click', function () {
+      var open = nav.classList.toggle('open');
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      burger.setAttribute('aria-label', open ? '關閉選單' : '開啟選單');
+    });
+    nav.querySelectorAll('.nav-links a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        nav.classList.remove('open');
+        burger.setAttribute('aria-expanded', 'false');
+        burger.setAttribute('aria-label', '開啟選單');
+      });
+    });
+  }
+
+  // ---- Copy to clipboard ----
+  function flashDone(btn) {
+    var label = btn.querySelector('.copy-label');
+    var original = label ? label.textContent : btn.textContent;
+    btn.classList.add('done');
+    if (label) { label.textContent = '已複製'; } else { btn.textContent = '已複製'; }
+    setTimeout(function () {
+      btn.classList.remove('done');
+      if (label) { label.textContent = original; } else { btn.textContent = original; }
+    }, 1800);
+  }
+  function fallbackCopy(text, btn) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); flashDone(btn); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function doCopy(text, btn) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { flashDone(btn); }).catch(function () { fallbackCopy(text, btn); });
+    } else {
+      fallbackCopy(text, btn);
+    }
+  }
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () { doCopy(btn.getAttribute('data-copy'), btn); });
+  });
+
+  // ---- Reveal on scroll ----
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var items = document.querySelectorAll('.reveal');
+  if (reduced || !('IntersectionObserver' in window)) {
+    items.forEach(function (el) { el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    items.forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>
+
+</body>
+</html>
