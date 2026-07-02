@@ -15,8 +15,6 @@
 (() => {
   if (window.__aiyuYTLoaded) return;
   window.__aiyuYTLoaded = true;
-  // 載入標記：開 console 看到這行＝跑的是含「額度早停」的新碼；沒看到＝還是舊碼。
-  console.log("[aiyu] youtube.js 已載入 — build: 額度早停 v0.1.1");
 
   const SYNC_MS = 200;
   // 預載緩衝：從開頭起「連續已翻好」的字幕要覆蓋到第幾秒，才從頭自動播放。
