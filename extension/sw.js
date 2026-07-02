@@ -390,5 +390,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // node 測試用：瀏覽器/SW 環境無 module，故守衛匯出純邏輯供 test/ 載入，不影響執行。
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { translateBatch, makeKey, mergeHostResults, contentScriptFiles };
+  module.exports = { translateBatch, mergeHostResults, contentScriptFiles };
 }
