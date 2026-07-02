@@ -471,15 +471,11 @@ function extractJsonArray(s) {
 
 async function handleMessage(msg) {
   if (msg.action === "ping") {
+    // 只回有人讀的欄位：popup 讀 node 與 available.*（host/version/各 CLI 路徑字串無任何消費者）。
     writeMessage({
       id: msg.id,
       result: {
-        host: "aiyu-host",
-        version: HOST_VERSION,
         node: process.version,
-        claude: findExecutable("claude"),
-        codex: findExecutable("codex"),
-        agy: findExecutable("agy"),
         available: detectAvailability()
       }
     });
