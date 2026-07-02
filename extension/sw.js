@@ -83,7 +83,8 @@ function refreshKeepAlive() {
   }
 }
 
-async function callHost(action, payload, timeoutMs = 90000) {
+// timeoutMs 必填：兩個 caller（translate 320s、ping 15s）各有明確值，不設幻影預設。
+async function callHost(action, payload, timeoutMs) {
   const id = nextId++;
   const p = ensurePort();
   return new Promise((resolve, reject) => {
