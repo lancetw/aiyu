@@ -70,8 +70,7 @@
         else pending++;
       }
       return {
-        total: n, done, exhausted, pending, inflight,
-        remaining: pending + inflight,                 // 還在流程中（仍可能成功）
+        done, exhausted, inflight,
         allResolved: pending === 0 && inflight === 0,  // 無待處理/進行中（exhausted 視為終局）
         allDone: done === n                            // 全部拿到真譯文
       };
@@ -81,10 +80,7 @@
       pickNext: pickNext,
       record: record,
       status: status,
-      reopenExhausted: reopenExhausted,
-      // 測試用內觀
-      _state: function () { return state.slice(); },
-      _attempts: function () { return attempts.slice(); }
+      reopenExhausted: reopenExhausted
     };
   }
 

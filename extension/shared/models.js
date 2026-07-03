@@ -284,7 +284,8 @@
       : DEFAULT_MODEL[cli];
   }
 
-  root.AIYU = { MODELS, DEFAULT_MODEL, DEFAULT_GLOSSARY, resolveModel, prettyModel, modelLabel, fillModelOptions };
+  // MODELS/prettyModel 為檔內實作細節（fillModelOptions/modelLabel 內用），不對外匯出。
+  root.AIYU = { DEFAULT_MODEL, DEFAULT_GLOSSARY, resolveModel, modelLabel, fillModelOptions };
 })(typeof self !== "undefined" ? self : globalThis);
 
 // node 測試：require 本檔即可拿到同一份(已掛在 globalThis.AIYU)。
