@@ -6,7 +6,7 @@
 
 一個專注於 **YouTube 字幕翻譯** 的 Chrome 擴充套件，呼叫本機的 `claude`、`codex` 或 `agy`（Antigravity）CLI，把字幕翻成 **台灣正體中文**（也可翻譯網頁上選取的文字）。
 
-> **狀態**：0.4.3
+> **狀態**：0.4.4
 > **Chrome Web Store**：[chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd](https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd)
 > **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
@@ -107,7 +107,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 | 設定 | 預設 | 說明 |
 |---|---|---|
 | `cli` | `codex` | 使用 `codex exec`、`claude -p` 或 `agy -p`（Antigravity 無模型可選） |
-| `model` | codex=`gpt-5.5`、claude=`Opus 4.8` | 各後端使用的模型（預設為最強）；claude 可選 Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 4.7 / Opus 4.6，UI 標示版本；Antigravity 由帳號端自動路由，無此選項 |
+| `model` | codex=`gpt-5.6-sol`、claude=`Opus 4.8` | 各後端使用的模型（預設為最強）；codex 可選 GPT-5.6 Luna / Terra / Sol / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 4.7 / Opus 4.6，UI 標示版本；Antigravity 由帳號端自動路由，無此選項 |
 | `target` | `zh-TW` | 目標語言（繁中台灣 / 簡中 / 英 / 日） |
 | `style` | `natural` | natural / literal / academic |
 | `glossaryEnabled` | `false`（停用） | 是否套用台灣詞庫；須在進階設定勾選「啟用台灣詞庫」並儲存 |

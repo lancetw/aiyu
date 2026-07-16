@@ -8,10 +8,12 @@
   // 版本字串(claude-haiku-4-5 / claude-sonnet-4-6 / claude-opus-4-8 / 4-7 / 4-6)由 claude CLI 本機 config 確認有效。
   const MODELS = {
     codex: [
-      { value: "gpt-5.4-mini", label: "GPT-5.4 mini（最快最省）" },
-      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex（程式專用）" },
-      { value: "gpt-5.4", label: "GPT-5.4（旗艦）" },
-      { value: "gpt-5.5", label: "GPT-5.5（最強）" }
+      { value: "gpt-5.6-luna", label: "GPT-5.6 Luna（最快最省）" },
+      { value: "gpt-5.6-terra", label: "GPT-5.6 Terra（均衡）" },
+      { value: "gpt-5.6-sol", label: "GPT-5.6 Sol（最強）" },
+      { value: "gpt-5.5", label: "GPT-5.5（上一代旗艦）" },
+      { value: "gpt-5.4", label: "GPT-5.4" },
+      { value: "gpt-5.4-mini", label: "GPT-5.4 mini" }
     ],
     claude: [
       { value: "claude-haiku-4-5", label: "Haiku 4.5（最快最省）" },
@@ -21,7 +23,7 @@
       { value: "claude-opus-4-6", label: "Opus 4.6" }
     ]
   };
-  const DEFAULT_MODEL = { codex: "gpt-5.5", claude: "claude-opus-4-8" };
+  const DEFAULT_MODEL = { codex: "gpt-5.6-sol", claude: "claude-opus-4-8" };
 
   // 對岸詞→台灣詞用詞對照：注入翻譯 system prompt，由模型理解上下文取代，不做後處理字串替換。
   // 全新安裝即套用（sw.js getSettings 的 fallback）；使用者可在進階設定覆寫。
@@ -239,14 +241,21 @@
   ];
 
   // 由設定推出實際模型：agy（Antigravity）由帳號端自動路由、print 模式無法指定 → null。
+  //
+  // codex 過清單白名單：OpenAI 會下架 slug（gpt-5.3-codex 下架後即 exit 1），而使用者選過的
+  // 舊值留在 storage（getSettings 的已存值覆蓋預設）→ 不驗證就會把死 slug 送進 CLI。
+  // 此處不對稱是刻意的：claude CLI 吃 haiku/sonnet/opus 別名，合法但本就不在清單內，
+  // 套白名單會把可用設定打成預設。勿為了對稱而統一。
   function resolveModel(settings) {
-    return settings.cli === "codex" ? settings.codexModel
-      : settings.cli === "claude" ? settings.claudeModel
-      : null;
+    if (settings.cli === "codex") {
+      const m = settings.codexModel;
+      return MODELS.codex.some((x) => x.value === m) ? m : DEFAULT_MODEL.codex;
+    }
+    return settings.cli === "claude" ? settings.claudeModel : null;
   }
 
   // 模型字串美化：claude 版本字串(claude-opus-4-7)→「Opus 4.7」(opus/sonnet/haiku 皆含版本號)。
-  // 別名(opus/sonnet/haiku)與 codex(gpt-5.5) 原樣放行。
+  // 別名(opus/sonnet/haiku)與 codex(gpt-5.6-sol) 原樣放行。
   function prettyModel(model) {
     const m = (model || "").match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)$/);
     if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
