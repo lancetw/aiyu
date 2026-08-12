@@ -420,15 +420,18 @@ function runCli(cli, prompt, model, context) {
       if (killed) return;
       const elapsed = ((Date.now() - spawnT0) / 1000).toFixed(1);
       if (code !== 0) {
-        log("cli non-zero exit", code, "after", elapsed + "s", "stderr:", stderr.slice(0, 500));
+        // claude -p 把致命錯誤（「Not logged in · Please run /login」、OAuth 逾期）寫到
+        // stdout 而非 stderr → 只看 stderr 會得到空字串，錯誤在日誌與 UI 都無法辨識。
+        const diag = (stderr.trim() || stdout.trim());
+        log("cli non-zero exit", code, "after", elapsed + "s", "err:", diag.slice(0, 500));
         cleanup();
-        if (isQuotaError(stderr)) {
+        if (isQuotaError(diag)) {
           // 額度用盡：給乾淨、可辨識的訊息（關鍵字「額度用盡」），讓前端在影片
           // 右上角顯示專屬狀態。否則 stderr.slice(0,200) 會把 usage-limit 字樣切掉。
           reject(new Error(`翻譯額度用盡，請稍後再試（${cli}）`));
           return;
         }
-        reject(new Error(`${cli} exited with code ${code}: ${stderr.slice(0, 200)}`));
+        reject(new Error(`${cli} exited with code ${code}: ${diag.slice(0, 200)}`));
         return;
       }
       log("cli done", cli, "in", elapsed + "s");
