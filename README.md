@@ -6,7 +6,7 @@
 
 一個專注於 **YouTube 字幕翻譯** 的 Chrome 擴充套件，呼叫本機的 `claude`、`codex` 或 `agy`（Antigravity）CLI，把字幕翻成 **台灣正體中文**（也可翻譯網頁上選取的文字）。
 
-> **狀態**：0.4.4
+> **狀態**：0.4.5
 > **Chrome Web Store**：[chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd](https://chrome.google.com/webstore/detail/mkdjepnmcmmjbnhkligompoblagocjmd)
 > **平台**：macOS / Linux；Windows 實驗中（安裝器與 host 已跨平台，待 Windows 實測）
 > **瀏覽器**：Chrome / Chromium / Edge / Brave / Arc
