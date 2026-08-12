@@ -107,7 +107,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 | 設定 | 預設 | 說明 |
 |---|---|---|
 | `cli` | `codex` | 使用 `codex exec`、`claude -p` 或 `agy -p`（Antigravity 無模型可選） |
-| `model` | codex=`gpt-5.6-sol`、claude=`Opus 4.8` | 各後端使用的模型（預設為最強）；codex 可選 GPT-5.6 Luna / Terra / Sol / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 4.7 / Opus 4.6，UI 標示版本；Antigravity 由帳號端自動路由，無此選項 |
+| `model` | codex=`gpt-5.6-sol`、claude=`Opus 5` | 各後端使用的模型（預設為最強）；codex 可選 GPT-5.6 Luna / Terra / Sol / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku 4.5 / Sonnet 5 / Opus 5 / Opus 4.8 / Sonnet 4.6 / Opus 4.7 / Opus 4.6，UI 標示版本；Antigravity 由帳號端自動路由，無此選項 |
 | `target` | `zh-TW` | 目標語言（繁中台灣 / 簡中 / 英 / 日） |
 | `style` | `natural` | natural / literal / academic |
 | `glossaryEnabled` | `false`（停用） | 是否套用台灣詞庫；須在進階設定勾選「啟用台灣詞庫」並儲存 |

@@ -5,7 +5,8 @@
 // 全部走 classic 全域(self.AIYU)，故本檔不可用 import/export。
 (function (root) {
   // 2026 模型清單。預設為各 CLI 最強的版本。claude 用版本字串(claude-<家族>-<版本>)以明確標示版本。
-  // 版本字串(claude-haiku-4-5 / claude-sonnet-4-6 / claude-opus-4-8 / 4-7 / 4-6)由 claude CLI 本機 config 確認有效。
+  // 版本字串(claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5 / claude-sonnet-4-6 / claude-opus-4-8 / 4-7 / 4-6)
+  // 由 claude CLI 本機安裝確認有效。第 5 代起無小版本號(claude-opus-5)，prettyModel 的小版本為選填即為此。
   const MODELS = {
     codex: [
       { value: "gpt-5.6-luna", label: "GPT-5.6 Luna（最快最省）" },
@@ -17,13 +18,15 @@
     ],
     claude: [
       { value: "claude-haiku-4-5", label: "Haiku 4.5（最快最省）" },
-      { value: "claude-sonnet-4-6", label: "Sonnet 4.6（均衡）" },
-      { value: "claude-opus-4-8", label: "Opus 4.8（最強）" },
+      { value: "claude-sonnet-5", label: "Sonnet 5（均衡）" },
+      { value: "claude-opus-5", label: "Opus 5（最強）" },
+      { value: "claude-opus-4-8", label: "Opus 4.8（上一代最強）" },
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6" },
       { value: "claude-opus-4-7", label: "Opus 4.7" },
       { value: "claude-opus-4-6", label: "Opus 4.6" }
     ]
   };
-  const DEFAULT_MODEL = { codex: "gpt-5.6-sol", claude: "claude-opus-4-8" };
+  const DEFAULT_MODEL = { codex: "gpt-5.6-sol", claude: "claude-opus-5" };
 
   // 對岸詞→台灣詞用詞對照：注入翻譯 system prompt，由模型理解上下文取代，不做後處理字串替換。
   // 全新安裝即套用（sw.js getSettings 的 fallback）；使用者可在進階設定覆寫。
@@ -254,11 +257,11 @@
     return settings.cli === "claude" ? settings.claudeModel : null;
   }
 
-  // 模型字串美化：claude 版本字串(claude-opus-4-7)→「Opus 4.7」(opus/sonnet/haiku 皆含版本號)。
-  // 別名(opus/sonnet/haiku)與 codex(gpt-5.6-sol) 原樣放行。
+  // 模型字串美化：claude 版本字串(claude-opus-4-7)→「Opus 4.7」、(claude-opus-5)→「Opus 5」。
+  // 小版本為選填：第 5 代起模型 id 只有主版本號。別名(opus/sonnet/haiku)與 codex(gpt-5.6-sol) 原樣放行。
   function prettyModel(model) {
-    const m = (model || "").match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)$/);
-    if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
+    const m = (model || "").match(/^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d+))?$/);
+    if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? "." + m[3] : ""}`;
     return model;
   }
 
