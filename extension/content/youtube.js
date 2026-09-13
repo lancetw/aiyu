@@ -1551,6 +1551,12 @@
         return;
       }
       if (!track) {
+        // 被風控（雲端/VPN IP）時回應是 LOGIN_REQUIRED 且沒有 captions，不能誤報成「沒字幕」
+        const ps = pr?.playabilityStatus;
+        if (ps && ps.status !== "OK") {
+          fail("YouTube 拒絕提供影片資料：" + (ps.reason || ps.status) + "（可能是網路/VPN 被判定為機器人）");
+          return;
+        }
         fail("找不到字幕軌(影片可能未提供字幕，或為直播)");
         return;
       }
