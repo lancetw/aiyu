@@ -1109,8 +1109,10 @@
     if (origLang && /^zh/.test(origLang)) return { track: null, allChinese: true };
 
     if (origLang) {
-      // 同原始語言的人工字幕最佳；否則退回原始語言的 ASR
-      const manualOrig = tracks.find((t) => t.kind !== "asr" && langOf(t) === origLang);
+      // 同原始語言的人工字幕最佳；否則退回原始語言的 ASR。
+      // 比主語言碼：ASR 常是 "en"，人工軌常帶地區 "en-US"，完整比對會永遠對不上
+      const baseOf = (lang) => lang.split("-")[0];
+      const manualOrig = tracks.find((t) => t.kind !== "asr" && baseOf(langOf(t)) === baseOf(origLang));
       if (manualOrig) return { track: manualOrig, allChinese: false };
       if (asr) return { track: asr, allChinese: false };
     }
