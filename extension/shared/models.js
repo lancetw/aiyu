@@ -11,6 +11,17 @@
   // 實際用到的版本由 host 回報（meta.model），翻譯後的標籤顯示真實版本（agy 輸出不含模型 → 顯示所選值）。
   // 下方固定版本給想鎖版本的人；版本字串皆經 host/smoke-model.js 實測有效。
   // 第 5 代主版本無小版本號(claude-opus-5)、5.5 起又有(claude-opus-5-5)，prettyModel 的小版本為選填即為此。
+  //
+  // 推理強度（effort）：""＝自動（不帶參數；codex 由 host 依情境選 low/medium）。
+  // 模型若有 efforts 欄位就用它，否則用該後端的 EFFORTS。實測（2026-10）：
+  //   - claude --effort：low～max 各模型皆接受（含 haiku）
+  //   - codex model_reasoning_effort：minimal 一律被拒；gpt-5.5/5.4/5.4-mini 不收 max（OpenAI 回 400）
+  const EFFORT_LABELS = { "": "自動", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最高" };
+  const EFFORTS = {
+    codex: ["", "low", "medium", "high", "xhigh", "max"],
+    claude: ["", "low", "medium", "high", "xhigh", "max"]
+  };
+  const CODEX_EFFORTS_5X = ["", "low", "medium", "high", "xhigh"];
   const MODELS = {
     codex: [
       { value: "", label: "自動（codex 推薦）" },
@@ -21,9 +32,9 @@
       { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
       { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
       { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
-      { value: "gpt-5.5", label: "GPT-5.5" },
-      { value: "gpt-5.4", label: "GPT-5.4" },
-      { value: "gpt-5.4-mini", label: "GPT-5.4 mini" }
+      { value: "gpt-5.5", label: "GPT-5.5", efforts: CODEX_EFFORTS_5X },
+      { value: "gpt-5.4", label: "GPT-5.4", efforts: CODEX_EFFORTS_5X },
+      { value: "gpt-5.4-mini", label: "GPT-5.4 mini", efforts: CODEX_EFFORTS_5X }
     ],
     claude: [
       { value: "haiku", label: "Haiku 最新（最快最省）" },
@@ -40,29 +51,26 @@
       { value: "claude-opus-4-7", label: "Opus 4.7" },
       { value: "claude-opus-4-6", label: "Opus 4.6" }
     ],
-    // agy 的 slug 內含推理強度（-low/-medium/-high）
+    // agy：基本型號 + --effort 指定推理強度。指定型號時 agy 必須帶 --effort（否則 exit 1），
+    // 且各型號可用強度不同 → 逐一列出（取自 `agy models` 的 slug 後綴，皆經實測）。
     agy: [
-      { value: "", label: "自動（帳號端路由）" },
-      { value: "gemini-3.8-flash-low", label: "Gemini 3.8 Flash (Low)" },
-      { value: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)" },
-      { value: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" },
-      { value: "gemini-3.1-pro-low", label: "Gemini 3.1 Pro (Low)" },
-      { value: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" },
-      { value: "claude-sonnet-5-5-low", label: "Claude Sonnet 5.5 (Low)" },
-      { value: "claude-sonnet-5-5-medium", label: "Claude Sonnet 5.5 (Medium)" },
-      { value: "claude-sonnet-5-5-high", label: "Claude Sonnet 5.5 (High)" },
-      { value: "claude-opus-5-5-low", label: "Claude Opus 5.5 (Low)" },
-      { value: "claude-opus-5-5-medium", label: "Claude Opus 5.5 (Medium)" },
-      { value: "claude-opus-5-5-high", label: "Claude Opus 5.5 (High)" },
-      { value: "gpt-oss-120b-medium", label: "GPT-OSS 120B (Medium)" }
+      { value: "", label: "自動（帳號端路由）", efforts: ["", "low", "medium", "high"] },
+      { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash", efforts: ["low", "medium", "high"] },
+      { value: "gemini-3.1-pro", label: "Gemini 3.1 Pro", efforts: ["low", "high"] },
+      { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", efforts: ["low", "medium", "high"] },
+      { value: "claude-opus-5-5", label: "Claude Opus 5.5", efforts: ["low", "medium", "high"] },
+      { value: "gpt-oss-120b", label: "GPT-OSS 120B", efforts: ["medium"] }
     ]
   };
   const DEFAULT_MODEL = { codex: "", claude: "opus", agy: "" };
 
   // 各後端模型存在哪個 storage key（讀寫共用，popup/options/sw 不再各自手寫 codex/claude 三元式）。
   const modelKey = (cli) => (MODELS[cli] ? `${cli}Model` : null);
-  // storage.get 的模型預設值：{ codexModel, claudeModel, agyModel }。
-  const MODEL_DEFAULTS = Object.fromEntries(Object.keys(MODELS).map((c) => [modelKey(c), DEFAULT_MODEL[c]]));
+  const effortKey = (cli) => (MODELS[cli] ? `${cli}Effort` : null);
+  // storage.get 的模型與強度預設值：{ codexModel, codexEffort, claudeModel, … }，強度一律 ""（自動）。
+  const MODEL_DEFAULTS = Object.fromEntries(
+    Object.keys(MODELS).flatMap((c) => [[modelKey(c), DEFAULT_MODEL[c]], [effortKey(c), ""]])
+  );
 
   // 對岸詞→台灣詞用詞對照：注入翻譯 system prompt，由模型理解上下文取代，不做後處理字串替換。
   // 全新安裝即套用（sw.js getSettings 的 fallback）；使用者可在進階設定覆寫。
@@ -290,9 +298,33 @@
     const cli = settings.cli;
     if (cli === "codex" || cli === "agy") {
       const m = settings[modelKey(cli)];
+      if (cli === "agy" && splitAgySlug(m)) return splitAgySlug(m).model;
       return MODELS[cli].some((x) => x.value === m) ? m : DEFAULT_MODEL[cli];
     }
     return cli === "claude" ? settings.claudeModel : null;
+  }
+
+  // 0.5.x 存的 agy 舊 slug 內含強度（gemini-3.8-flash-low）→ 拆回基本型號＋強度，免得已選的型號被打回自動。
+  function splitAgySlug(m) {
+    const x = /^(.+)-(low|medium|high)$/.exec(m || "");
+    return x && MODELS.agy.some((e) => e.value === x[1]) ? { model: x[1], effort: x[2] } : null;
+  }
+
+  // 該模型可選的強度；無模型清單的後端 → null。
+  function effortsFor(cli, model) {
+    if (!MODELS[cli]) return null;
+    return MODELS[cli].find((x) => x.value === model)?.efforts || EFFORTS[cli];
+  }
+
+  // 由設定推出實際強度（""＝自動、不帶參數）；存的值不適用目前模型 → 舊 slug 的強度或清單第一項。
+  // agy 指定型號的清單不含 ""，所以不會漏帶 --effort。
+  function resolveEffort(settings) {
+    const list = effortsFor(settings.cli, resolveModel(settings));
+    if (!list) return null;
+    const e = settings[effortKey(settings.cli)];
+    if (list.includes(e)) return e;
+    const legacy = settings.cli === "agy" && splitAgySlug(settings.agyModel);
+    return legacy ? legacy.effort : list[0];
   }
 
   // 模型字串美化：claude 版本字串(claude-opus-4-7)→「Opus 4.7」、(claude-opus-5)→「Opus 5」。
@@ -348,8 +380,28 @@
       : DEFAULT_MODEL[cli];
   }
 
+  // 填入 #effort 下拉：選項隨模型而變（agy 各型號強度不同）。無清單 → 隱藏整列。
+  function fillEffortOptions(cli, model, selected) {
+    const sel = document.getElementById("effort");
+    const r = sel.closest("label");
+    const list = effortsFor(cli, model);
+    if (r) r.style.display = list ? "" : "none";
+    sel.replaceChildren(...(list || []).map((e) => new Option(EFFORT_LABELS[e], e)));
+    if (list) sel.value = list.includes(selected) ? selected : list[0];
+  }
+
+  // 依已存設定 d 填好模型＋強度兩個下拉（舊 agy slug 經 resolve* 拆開後顯示）。
+  function fillPickers(cli, d) {
+    const s = { ...d, cli };
+    fillModelOptions(cli, resolveModel(s));
+    fillEffortOptions(cli, document.getElementById("model").value, resolveEffort(s));
+  }
+
   // MODELS/prettyModel 為檔內實作細節（fillModelOptions/modelLabel 內用），不對外匯出。
-  root.AIYU = { DEFAULT_MODEL, MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, resolveModel, modelLabel, fillModelOptions, hostOutdated };
+  root.AIYU = {
+    DEFAULT_MODEL, MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, effortKey, resolveModel, resolveEffort,
+    modelLabel, fillPickers, fillEffortOptions, hostOutdated
+  };
 })(typeof self !== "undefined" ? self : globalThis);
 
 // node 測試：require 本檔即可拿到同一份(已掛在 globalThis.AIYU)。

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 測 model 參數有沒有帶到 CLI
-// 用法：node host/smoke-model.js <claude|codex> <model>
+// 用法：node host/smoke-model.js <claude|codex|agy> <model> [effort]
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cli = process.argv[2] || "claude";
 // ?? 而非 ||：傳 "" 才能測 codex 自動（不帶 -m）
 const model = process.argv[3] ?? (cli === "codex" ? "gpt-5.4-mini" : "haiku");
+const effort = process.argv[4] || null;
 
 const host = spawn(process.execPath, [path.join(__dirname, "aiyu-host.js")], {
   stdio: ["pipe", "pipe", "inherit"]
@@ -37,12 +38,13 @@ host.stdout.on("data", (d) => {
 });
 host.on("exit", (c) => console.log("host exit", c));
 
-console.log(`▶ translate via cli=${cli} model=${model}`);
+console.log(`▶ translate via cli=${cli} model=${model} effort=${effort}`);
 send({
   id: 1,
   action: "translate",
   cli,
   model,
+  effort,
   target: "zh-TW",
   style: "natural",
   glossary: [],

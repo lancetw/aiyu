@@ -1,7 +1,7 @@
 const status = document.getElementById("status");
 
 // 模型清單／預設／下拉填充的單一來源 = ../shared/models.js（popup.html 先載入該檔，掛在 self.AIYU）。
-const { MODEL_DEFAULTS, modelKey, fillModelOptions, hostOutdated } = AIYU;
+const { MODEL_DEFAULTS, modelKey, effortKey, fillPickers, fillEffortOptions, hostOutdated } = AIYU;
 
 function setStatus(text, kind = "info") {
   status.textContent = text;
@@ -26,7 +26,7 @@ async function loadSettings() {
   document.getElementById("cli").value = d.cli;
   document.getElementById("target").value = d.target;
   document.getElementById("style").value = d.style;
-  fillModelOptions(d.cli, d[modelKey(d.cli)]);
+  fillPickers(d.cli, d);
 }
 
 async function saveSetting(key, val) {
@@ -39,18 +39,23 @@ for (const id of ["target", "style"]) {
   });
 }
 
-// CLI 改變 → 重建模型選項，並存好新 CLI
+// CLI 改變 → 重建模型／強度選項，並存好新 CLI
 document.getElementById("cli").addEventListener("change", async (e) => {
   const cli = e.target.value;
   await saveSetting("cli", cli);
-  const d = await chrome.storage.sync.get(MODEL_DEFAULTS);
-  fillModelOptions(cli, d[modelKey(cli)]);
+  fillPickers(cli, await chrome.storage.sync.get(MODEL_DEFAULTS));
 });
 
-// 模型改變 → 存到對應 CLI 的 model key
+// 模型改變 → 存到對應 CLI 的 model key；強度選項隨模型而變，連同畫面上的強度一起存，免得與實際送出的不一致
 document.getElementById("model").addEventListener("change", (e) => {
   const cli = document.getElementById("cli").value;
-  saveSetting(modelKey(cli), e.target.value);
+  const effort = document.getElementById("effort");
+  fillEffortOptions(cli, e.target.value, effort.value);
+  chrome.storage.sync.set({ [modelKey(cli)]: e.target.value, [effortKey(cli)]: effort.value });
+});
+
+document.getElementById("effort").addEventListener("change", (e) => {
+  saveSetting(effortKey(document.getElementById("cli").value), e.target.value);
 });
 
 document.getElementById("ping").addEventListener("click", async () => {
@@ -92,8 +97,7 @@ document.getElementById("open-options").addEventListener("click", (e) => {
         if (fallback) {
           cliSel.value = fallback;
           await chrome.storage.sync.set({ cli: fallback });
-          const d = await chrome.storage.sync.get(MODEL_DEFAULTS);
-          fillModelOptions(fallback, d[modelKey(fallback)]);
+          fillPickers(fallback, await chrome.storage.sync.get(MODEL_DEFAULTS));
           setStatus(`偵測到偏好 CLI 未安裝，已切到 ${fallback}`, "ok");
         } else {
           setStatus("claude、codex、antigravity 都未安裝；請先設定 PATH 或安裝。", "error");

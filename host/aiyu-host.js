@@ -330,7 +330,7 @@ function ensureAgyWorkspace() {
   }
 }
 
-function runCli(cli, prompt, model, context) {
+function runCli(cli, prompt, model, context, effort) {
   return new Promise((resolve, reject) => {
     let bin, args;
     let outFile = null; // codex 走 --output-last-message 寫檔，避免 stdout trace 污染
@@ -351,6 +351,7 @@ function runCli(cli, prompt, model, context) {
         "--output-format", "json"
       ];
       if (model) args.push("--model", model);
+      if (effort) args.push("--effort", effort);
       args.push(prompt.user);
     } else if (cli === "codex") {
       bin = findExecutable("codex");
@@ -363,7 +364,8 @@ function runCli(cli, prompt, model, context) {
         "--skip-git-repo-check",
         "--ephemeral",
         "--color", "never",
-        "-c", `model_reasoning_effort=${context === "youtube" ? "low" : "medium"}`,
+        // 未指定強度 → 字幕求快用 low，其他 medium
+        "-c", `model_reasoning_effort=${effort || (context === "youtube" ? "low" : "medium")}`,
         "--output-last-message", outFile
       ];
       if (model) args.push("-m", model);
@@ -382,7 +384,9 @@ function runCli(cli, prompt, model, context) {
         cwd = ws;
         args.push("--agent", AGY_AGENT);
       }
+      // 指定 --model 時 agy 必須帶 --effort（否則 exit 1）；擴充端保證有值。--effort 同樣要在 -p 之前。
       if (model) args.push("--model", model);
+      if (effort) args.push("--effort", effort);
       args.push("-p", `${prompt.system}\n\n${prompt.user}`);
     } else {
       reject(new Error(`unknown cli: ${cli}`));
@@ -391,7 +395,7 @@ function runCli(cli, prompt, model, context) {
 
     const spawnT0 = Date.now();
     const promptLen = prompt.system.length + prompt.user.length;
-    log("spawn", bin, "subcmd=", args[0], "model=", model || "(default)", "prompt-len=", promptLen);
+    log("spawn", bin, "subcmd=", args[0], "model=", model || "(default)", "effort=", effort || "(default)", "prompt-len=", promptLen);
 
     const extraPath = IS_WIN
       ? [path.join(process.env.APPDATA || path.join(os.homedir(), "AppData/Roaming"), "npm")]
@@ -558,6 +562,9 @@ function extractJsonArray(s) {
 
 // ----- Message handlers -----
 
+// 擴充端可送的推理強度（三家 CLI 的聯集；個別模型支援度由擴充端清單把關）
+const EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
+
 async function handleMessage(msg) {
   if (msg.action === "ping") {
     // 只回有人讀的欄位：popup 讀 node、version（比對擴充版本、提示更新 host）與 available.*。
@@ -586,8 +593,10 @@ async function handleMessage(msg) {
     if (picked.fellBack) {
       log("fallback", picked.from, "→", picked.cli);
     }
-    // fallback 後 model 可能不適用對方 CLI（gpt-* 給 claude 會炸）→ 只在沒 fallback 時帶 model
+    // fallback 後 model 可能不適用對方 CLI（gpt-* 給 claude 會炸）→ 只在沒 fallback 時帶 model，強度同理。
     const effectiveModel = picked.fellBack ? null : model;
+    // effort 會進 argv（Windows .cmd 經 cmd.exe 解析）→ 白名單外一律當未指定
+    const effectiveEffort = !picked.fellBack && EFFORTS.has(msg.effort) ? msg.effort : null;
     const prompt = buildPrompt({
       target: msg.target,
       style: msg.style,
@@ -597,7 +606,7 @@ async function handleMessage(msg) {
       context: msg.context
     });
     try {
-      const { text, model: usedModel } = await runCli(picked.cli, prompt, effectiveModel, msg.context);
+      const { text, model: usedModel } = await runCli(picked.cli, prompt, effectiveModel, msg.context, effectiveEffort);
       const parsed = extractJsonArray(text);
       const srcById = new Map(segments.map((x) => [String(x.id), x.text]));
       const result = parsed

@@ -107,7 +107,8 @@ export AIYU_AGY_PATH=/your/path/to/agy
 | 設定 | 預設 | 說明 |
 |---|---|---|
 | `cli` | `codex` | 使用 `codex exec`、`claude -p` 或 `agy -p` |
-| `model` | codex=自動、claude=`Opus 最新`、agy=自動 | 各後端使用的模型。預設跟著 CLI 自動用最新：claude 用別名 `opus`（CLI 解析成最新 Opus），codex 不帶 `-m`（用 OpenAI 推薦的預設，通常是主力型號而非最強），agy 不帶 `--model`（帳號端路由）；翻譯後的標籤顯示實際用到的版本。也可鎖定固定版本：codex 可選 GPT-6 Luna / GPT-6.1 Sol / GPT-6 Astra / GPT-6 Sol / GPT-5.6 Sol / Terra / Luna / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku / Sonnet 最新、Haiku 5.5 / Sonnet 5.5 / Opus 5.5 / Opus 5 / Sonnet 5 / Haiku 4.5 / Opus 4.8 / Sonnet 4.6 / Opus 4.7 / Opus 4.6，agy 可選 Gemini 3.8 Flash / Gemini 3.1 Pro / Claude Sonnet 5.5 / Claude Opus 5.5 / GPT-OSS 120B（各含推理強度 Low / Medium / High）；agy 輸出不含模型名，實際模型從 agy 的 log 讀取 |
+| `model` | codex=自動、claude=`Opus 最新`、agy=自動 | 各後端使用的模型。預設跟著 CLI 自動用最新：claude 用別名 `opus`（CLI 解析成最新 Opus），codex 不帶 `-m`（用 OpenAI 推薦的預設，通常是主力型號而非最強），agy 不帶 `--model`（帳號端路由）；翻譯後的標籤顯示實際用到的版本。也可鎖定固定版本：codex 可選 GPT-6 Luna / GPT-6.1 Sol / GPT-6 Astra / GPT-6 Sol / GPT-5.6 Sol / Terra / Luna / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku / Sonnet 最新、Haiku 5.5 / Sonnet 5.5 / Opus 5.5 / Opus 5 / Sonnet 5 / Haiku 4.5 / Opus 4.8 / Sonnet 4.6 / Opus 4.7 / Opus 4.6，agy 可選 Gemini 3.8 Flash / Gemini 3.1 Pro / Claude Sonnet 5.5 / Claude Opus 5.5 / GPT-OSS 120B（推理強度另由 `effort` 選）；agy 輸出不含模型名，實際模型從 agy 的 log 讀取 |
+| `effort` | 自動 | 推理強度：自動 / 低 / 中 / 高 / 超高 / 最高，選項隨模型而變。自動＝不帶參數（codex 字幕用 low、其他 medium）。claude 帶 `--effort`、codex 帶 `-c model_reasoning_effort=`、agy 帶 `--effort`；codex GPT-5.5 / 5.4 / 5.4 mini 不支援「最高」；agy 指定型號時必須選強度（Gemini 3.1 Pro 只有低／高、GPT-OSS 120B 只有中） |
 | `target` | `zh-TW` | 目標語言（繁中台灣 / 簡中 / 英 / 日） |
 | `style` | `natural` | natural / literal / academic |
 | `glossaryEnabled` | `false`（停用） | 是否套用台灣詞庫；須在進階設定勾選「啟用台灣詞庫」並儲存 |

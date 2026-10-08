@@ -21,7 +21,7 @@ function textToGlossary(t) {
 }
 
 // 模型清單／預設／下拉填充的單一來源 = ../shared/models.js（options.html 先載入該檔，掛在 self.AIYU）。
-const { MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, fillModelOptions } = AIYU;
+const { MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, effortKey, fillPickers, fillEffortOptions } = AIYU;
 
 async function load() {
   const d = await chrome.storage.sync.get({
@@ -32,24 +32,29 @@ async function load() {
     glossaryEnabled: false
   });
   document.getElementById("cli").value = d.cli;
-  fillModelOptions(d.cli, d[modelKey(d.cli)]);
+  fillPickers(d.cli, d);
   document.getElementById("customPrompt").value = d.customPrompt;
   document.getElementById("glossary").value = glossaryToText(d.glossary);
   document.getElementById("glossaryEnabled").checked = d.glossaryEnabled;
 }
 
-// CLI 改變 → 即時儲存 + 重建模型選項
+// CLI 改變 → 即時儲存 + 重建模型／強度選項
 document.getElementById("cli").addEventListener("change", async (e) => {
   const cli = e.target.value;
   await chrome.storage.sync.set({ cli });
-  const d = await chrome.storage.sync.get(MODEL_DEFAULTS);
-  fillModelOptions(cli, d[modelKey(cli)]);
+  fillPickers(cli, await chrome.storage.sync.get(MODEL_DEFAULTS));
 });
 
-// 模型改變 → 即時儲存到對應 CLI 的 key
+// 模型改變 → 即時儲存到對應 CLI 的 key；強度選項隨模型而變，連同畫面上的強度一起存
 document.getElementById("model").addEventListener("change", (e) => {
   const cli = document.getElementById("cli").value;
-  chrome.storage.sync.set({ [modelKey(cli)]: e.target.value });
+  const effort = document.getElementById("effort");
+  fillEffortOptions(cli, e.target.value, effort.value);
+  chrome.storage.sync.set({ [modelKey(cli)]: e.target.value, [effortKey(cli)]: effort.value });
+});
+
+document.getElementById("effort").addEventListener("change", (e) => {
+  chrome.storage.sync.set({ [effortKey(document.getElementById("cli").value)]: e.target.value });
 });
 
 document.getElementById("save").addEventListener("click", async () => {

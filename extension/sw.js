@@ -40,7 +40,7 @@ function makeKey(text, target, style, context, backend) {
 // node 測試走 require。兩者都把 AIYU 掛到全域(self/globalThis)。
 if (typeof importScripts === "function") importScripts("shared/models.js");
 else if (typeof require === "function") require("./shared/models.js");
-const { resolveModel, modelLabel, MODEL_DEFAULTS, DEFAULT_GLOSSARY } = AIYU;
+const { resolveModel, resolveEffort, modelLabel, MODEL_DEFAULTS, DEFAULT_GLOSSARY } = AIYU;
 
 function ensurePort() {
   if (port) return port;
@@ -138,8 +138,10 @@ function mergeHostResults(need, result) {
 async function translateBatch(segments, settings, context) {
   // segments: [{id, text}]；context: "youtube" | "selection" 等，決定 host 端譯者人格
   const model = resolveModel(settings);
-  // backend 入 key，使切換模型/後端後同段文字重新翻譯（見 makeKey）。
-  const backend = `${settings.cli}:${model ?? ""}`;
+  const effort = resolveEffort(settings);
+  // backend 入 key，使切換模型/後端/強度後同段文字重新翻譯（見 makeKey）。
+  // 強度為自動時不附加 → 既有快取 key 不變。
+  const backend = `${settings.cli}:${model ?? ""}${effort ? ":" + effort : ""}`;
 
   const out = new Array(segments.length);
   const need = [];
@@ -161,6 +163,7 @@ async function translateBatch(segments, settings, context) {
   const { result, meta } = await callHost("translate", {
     cli: settings.cli,
     model,
+    effort,
     target: settings.target,
     style: settings.style,
     context,
