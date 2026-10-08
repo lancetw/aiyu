@@ -3,11 +3,12 @@
 //
 //   用法：node scripts/bump-version.js <x.y.z>     例如：node scripts/bump-version.js 0.4.3
 //
-// 落點（5 處）：
+// 落點（6 處）：
 //   1) extension/manifest.json   頂層 "version"          → CWS 上架版號
 //   2) host/package.json         "version"               → npm @lancetw/aiyu 版號
 //   3) host/package-lock.json    自身版號（root + packages[""]，共 2 處）
 //   4) README.md                 「> **狀態**：x.y.z」狀態行
+//   5) host/aiyu-host.js         HOST_VERSION（host 啟動 log 的版號，供除錯時辨識使用者裝的是哪版 host）
 //
 // host/ 的 package.json + lock 交給 `npm version` 處理：npm 只動套件自身版號、
 // 絕不誤改相依（lock 內每個相依也有 "version"，盲目字串替換會中招）。
@@ -38,7 +39,10 @@ patch(join(ROOT, "extension/manifest.json"), /("version":\s*")\d+\.\d+\.\d+(")/,
 // 3) README 狀態行
 patch(join(ROOT, "README.md"), /(> \*\*狀態\*\*：)\d+\.\d+\.\d+/, `$1${NEW}`);
 
-console.log(`✅ 版本號已同步 → ${NEW}（manifest / host package+lock / README）`);
+// 4) host 啟動 log 版號
+patch(join(ROOT, "host/aiyu-host.js"), /(const HOST_VERSION = ")\d+\.\d+\.\d+(")/, `$1${NEW}$2`);
+
+console.log(`✅ 版本號已同步 → ${NEW}（manifest / host package+lock / README / HOST_VERSION）`);
 
 function patch(file, re, replacement) {
   const before = readFileSync(file, "utf8");

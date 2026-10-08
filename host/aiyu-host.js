@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const HOST_VERSION = "0.3.2";
+const HOST_VERSION = "0.5.0";
 // 單次 CLI 呼叫上限：全後端統一 300s。健康呼叫遠低於此（claude ~24s、codex ~15s），
 // 300s 幾乎只有真正卡死/中斷/伺服器負載或額度退避拉長時才觸發 → 不再誤砍正在正常工作的
 // 呼叫。偶發失敗（含 codex 罕見的「整個卡住」）由前端 scheduler 優先重試、bounded 後大聲
