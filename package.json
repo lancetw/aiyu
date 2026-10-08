@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "node --test test/ && npm --prefix host test && for f in extension/content/*.js extension/popup/*.js extension/options/*.js; do node --check \"$f\" || exit 1; done"
+  }
+}

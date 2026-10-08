@@ -13,8 +13,10 @@ host/agy-workspace/
 # node
 node_modules/
 
-# 本機 QA 截圖與測試金鑰（非版控內容；README 用的是 docs/images/）
-test/
+# 本機 QA 截圖與測試金鑰（非版控內容；README 用的是 docs/images/）。test/*.test.js 要進版控：
+# 整個 test/ 被忽略時 worktree 沒有測試、CI 也跑不了。私鑰另由上方 *.pem 擋下。
+test/*.png
+test/*.b64
 
 # superpowers/GSD 規劃草稿（本機工作流產物，不進公開 repo）
 docs/superpowers/
