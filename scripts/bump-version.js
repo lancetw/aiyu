@@ -44,6 +44,22 @@ patch(join(ROOT, "host/aiyu-host.js"), /(const HOST_VERSION = ")\d+\.\d+\.\d+(")
 
 console.log(`✅ 版本號已同步 → ${NEW}（manifest / host package+lock / README / HOST_VERSION）`);
 
+// 發版其餘步驟（順序有相依：package-extension 從 tag 取檔；GitHub Release 說明寫 npm 已同步，故等 npm 上架後才建）
+console.log(`
+接下來：
+  1. npm test
+  2. git add README.md extension/manifest.json host/aiyu-host.js host/package.json host/package-lock.json
+     git commit -m "chore(release): ${NEW} — <摘要>"
+  3. git tag -a v${NEW} -m "aiyu ${NEW}"
+  4. node scripts/package-extension.js          → ../aiyu-extension-${NEW}.zip（CWS 送審包）
+  5. (cd host && npm pack --dry-run)            → 確認沒夾帶 agy-workspace 等執行期雜物
+  6. git push origin master v${NEW}
+  7. (cd host && npm publish --access public)   → 需要 OTP，於互動終端機執行
+  8. 等 npm 上架：curl -s https://registry.npmjs.org/@lancetw/aiyu/${NEW} 回 JSON、tarball 回 200
+     （別用 npm view：本機若有 pmg 等 cooldown 包裝，新版會被藏起來）
+  9. gh release create v${NEW} --verify-tag --title "v${NEW} — <標題>" --notes-file <說明>
+ 10. 上傳 zip 到 Chrome Web Store（手動）`);
+
 function patch(file, re, replacement) {
   const before = readFileSync(file, "utf8");
   const after = before.replace(re, replacement);
