@@ -1,7 +1,7 @@
 const status = document.getElementById("status");
 
 // 模型清單／預設／下拉填充的單一來源 = ../shared/models.js（popup.html 先載入該檔，掛在 self.AIYU）。
-const { DEFAULT_MODEL, fillModelOptions } = AIYU;
+const { MODEL_DEFAULTS, modelKey, fillModelOptions } = AIYU;
 
 function setStatus(text, kind = "info") {
   status.textContent = text;
@@ -11,16 +11,14 @@ function setStatus(text, kind = "info") {
 async function loadSettings() {
   const d = await chrome.storage.sync.get({
     cli: "codex",
-    codexModel: DEFAULT_MODEL.codex,
-    claudeModel: DEFAULT_MODEL.claude,
+    ...MODEL_DEFAULTS,
     target: "zh-TW",
     style: "natural"
   });
   document.getElementById("cli").value = d.cli;
   document.getElementById("target").value = d.target;
   document.getElementById("style").value = d.style;
-  const curModel = d.cli === "codex" ? d.codexModel : d.claudeModel;
-  fillModelOptions(d.cli, curModel);
+  fillModelOptions(d.cli, d[modelKey(d.cli)]);
 }
 
 async function saveSetting(key, val) {
@@ -37,17 +35,14 @@ for (const id of ["target", "style"]) {
 document.getElementById("cli").addEventListener("change", async (e) => {
   const cli = e.target.value;
   await saveSetting("cli", cli);
-  const d = await chrome.storage.sync.get({
-    codexModel: DEFAULT_MODEL.codex,
-    claudeModel: DEFAULT_MODEL.claude
-  });
-  fillModelOptions(cli, cli === "codex" ? d.codexModel : d.claudeModel);
+  const d = await chrome.storage.sync.get(MODEL_DEFAULTS);
+  fillModelOptions(cli, d[modelKey(cli)]);
 });
 
 // 模型改變 → 存到對應 CLI 的 model key
 document.getElementById("model").addEventListener("change", (e) => {
   const cli = document.getElementById("cli").value;
-  saveSetting(cli === "codex" ? "codexModel" : "claudeModel", e.target.value);
+  saveSetting(modelKey(cli), e.target.value);
 });
 
 document.getElementById("ping").addEventListener("click", async () => {
@@ -89,11 +84,8 @@ document.getElementById("open-options").addEventListener("click", (e) => {
         if (fallback) {
           cliSel.value = fallback;
           await chrome.storage.sync.set({ cli: fallback });
-          const d = await chrome.storage.sync.get({
-            codexModel: DEFAULT_MODEL.codex,
-            claudeModel: DEFAULT_MODEL.claude
-          });
-          fillModelOptions(fallback, fallback === "codex" ? d.codexModel : d.claudeModel);
+          const d = await chrome.storage.sync.get(MODEL_DEFAULTS);
+          fillModelOptions(fallback, d[modelKey(fallback)]);
           setStatus(`偵測到偏好 CLI 未安裝，已切到 ${fallback}`, "ok");
         } else {
           setStatus("claude、codex、antigravity 都未安裝；請先設定 PATH 或安裝。", "error");

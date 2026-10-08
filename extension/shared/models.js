@@ -7,7 +7,8 @@
   // 2026 模型清單。預設走「自動最新」，新模型上線不必改這裡：
   //   - claude：別名 opus/sonnet/haiku，CLI 自動解析成該家族最新版（實測 opus → claude-opus-5-5）
   //   - codex ：空字串 = 不帶 -m，由 codex 用 OpenAI 推薦的預設（實測 gpt-6.1-sol；主力型號，非最強的 Astra）
-  // 實際用到的版本由 host 回報（meta.model），翻譯後的標籤顯示真實版本。
+  //   - agy   ：空字串 = 不帶 --model，由帳號端自動路由（agy 1.3 起 print 模式才能指定模型；清單取自 `agy models`）
+  // 實際用到的版本由 host 回報（meta.model），翻譯後的標籤顯示真實版本（agy 輸出不含模型 → 顯示所選值）。
   // 下方固定版本給想鎖版本的人；版本字串皆經 host/smoke-model.js 實測有效。
   // 第 5 代主版本無小版本號(claude-opus-5)、5.5 起又有(claude-opus-5-5)，prettyModel 的小版本為選填即為此。
   const MODELS = {
@@ -38,9 +39,30 @@
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6" },
       { value: "claude-opus-4-7", label: "Opus 4.7" },
       { value: "claude-opus-4-6", label: "Opus 4.6" }
+    ],
+    // agy 的 slug 內含推理強度（-low/-medium/-high）
+    agy: [
+      { value: "", label: "自動（帳號端路由）" },
+      { value: "gemini-3.8-flash-low", label: "Gemini 3.8 Flash (Low)" },
+      { value: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)" },
+      { value: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" },
+      { value: "gemini-3.1-pro-low", label: "Gemini 3.1 Pro (Low)" },
+      { value: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" },
+      { value: "claude-sonnet-5-5-low", label: "Claude Sonnet 5.5 (Low)" },
+      { value: "claude-sonnet-5-5-medium", label: "Claude Sonnet 5.5 (Medium)" },
+      { value: "claude-sonnet-5-5-high", label: "Claude Sonnet 5.5 (High)" },
+      { value: "claude-opus-5-5-low", label: "Claude Opus 5.5 (Low)" },
+      { value: "claude-opus-5-5-medium", label: "Claude Opus 5.5 (Medium)" },
+      { value: "claude-opus-5-5-high", label: "Claude Opus 5.5 (High)" },
+      { value: "gpt-oss-120b-medium", label: "GPT-OSS 120B (Medium)" }
     ]
   };
-  const DEFAULT_MODEL = { codex: "", claude: "opus" };
+  const DEFAULT_MODEL = { codex: "", claude: "opus", agy: "" };
+
+  // 各後端模型存在哪個 storage key（讀寫共用，popup/options/sw 不再各自手寫 codex/claude 三元式）。
+  const modelKey = (cli) => (MODELS[cli] ? `${cli}Model` : null);
+  // storage.get 的模型預設值：{ codexModel, claudeModel, agyModel }。
+  const MODEL_DEFAULTS = Object.fromEntries(Object.keys(MODELS).map((c) => [modelKey(c), DEFAULT_MODEL[c]]));
 
   // 對岸詞→台灣詞用詞對照：注入翻譯 system prompt，由模型理解上下文取代，不做後處理字串替換。
   // 全新安裝即套用（sw.js getSettings 的 fallback）；使用者可在進階設定覆寫。
@@ -257,18 +279,20 @@
     ["智能化", "智慧化"]
   ];
 
-  // 由設定推出實際模型：agy（Antigravity）由帳號端自動路由、print 模式無法指定 → null。
+  // 由設定推出實際模型；無模型清單的後端 → null。
   //
-  // codex 過清單白名單（"" = 自動，也在清單內）：OpenAI 會下架 slug（gpt-5.3-codex 下架後即 exit 1），而使用者選過的
+  // codex／agy 過清單白名單（"" = 自動，也在清單內）：OpenAI 會下架 slug（gpt-5.3-codex 下架後即 exit 1），而使用者選過的
   // 舊值留在 storage（getSettings 的已存值覆蓋預設）→ 不驗證就會把死 slug 送進 CLI。
   // 此處不對稱是刻意的：claude CLI 吃任意合法模型字串（含清單外的完整 id），
   // 套白名單會把可用設定打成預設。勿為了對稱而統一。
+  // agy 同理：清單外的模型 agy 直接 exit 1。
   function resolveModel(settings) {
-    if (settings.cli === "codex") {
-      const m = settings.codexModel;
-      return MODELS.codex.some((x) => x.value === m) ? m : DEFAULT_MODEL.codex;
+    const cli = settings.cli;
+    if (cli === "codex" || cli === "agy") {
+      const m = settings[modelKey(cli)];
+      return MODELS[cli].some((x) => x.value === m) ? m : DEFAULT_MODEL[cli];
     }
-    return settings.cli === "claude" ? settings.claudeModel : null;
+    return cli === "claude" ? settings.claudeModel : null;
   }
 
   // 模型字串美化：claude 版本字串(claude-opus-4-7)→「Opus 4.7」、(claude-opus-5)→「Opus 5」。
@@ -281,8 +305,8 @@
     return model;
   }
 
-  // 給使用者看的「翻譯用模型」標籤：後端 · 模型。null/undefined（agy、fallback 後未知）→ 只顯示後端名；
-  // ""（codex 自動）→「自動」。
+  // 給使用者看的「翻譯用模型」標籤：後端 · 模型。null/undefined（無模型清單、fallback 後未知）→ 只顯示後端名；
+  // ""（自動）→「自動」。
   function modelLabel(cli, model) {
     const name =
       cli === "codex" ? "Codex"
@@ -293,7 +317,7 @@
     return `${name} · ${model === "" ? "自動" : prettyModel(model)}`;
   }
 
-  // 填入 #model 下拉(popup/options 共用)。agy 等無模型可選 → 隱藏整列。需要 DOM，僅在頁面端呼叫。
+  // 填入 #model 下拉(popup/options 共用)。無模型清單的後端 → 隱藏整列。需要 DOM，僅在頁面端呼叫。
   function fillModelOptions(cli, selected) {
     const sel = document.getElementById("model");
     const r = sel.closest("label");
@@ -315,7 +339,7 @@
   }
 
   // MODELS/prettyModel 為檔內實作細節（fillModelOptions/modelLabel 內用），不對外匯出。
-  root.AIYU = { DEFAULT_MODEL, DEFAULT_GLOSSARY, resolveModel, modelLabel, fillModelOptions };
+  root.AIYU = { DEFAULT_MODEL, MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, resolveModel, modelLabel, fillModelOptions };
 })(typeof self !== "undefined" ? self : globalThis);
 
 // node 測試：require 本檔即可拿到同一份(已掛在 globalThis.AIYU)。

@@ -21,19 +21,18 @@ function textToGlossary(t) {
 }
 
 // 模型清單／預設／下拉填充的單一來源 = ../shared/models.js（options.html 先載入該檔，掛在 self.AIYU）。
-const { DEFAULT_MODEL, DEFAULT_GLOSSARY, fillModelOptions } = AIYU;
+const { MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, fillModelOptions } = AIYU;
 
 async function load() {
   const d = await chrome.storage.sync.get({
     cli: "codex",
-    codexModel: DEFAULT_MODEL.codex,
-    claudeModel: DEFAULT_MODEL.claude,
+    ...MODEL_DEFAULTS,
     customPrompt: "",
     glossary: DEFAULT_GLOSSARY,
     glossaryEnabled: false
   });
   document.getElementById("cli").value = d.cli;
-  fillModelOptions(d.cli, d.cli === "codex" ? d.codexModel : d.claudeModel);
+  fillModelOptions(d.cli, d[modelKey(d.cli)]);
   document.getElementById("customPrompt").value = d.customPrompt;
   document.getElementById("glossary").value = glossaryToText(d.glossary);
   document.getElementById("glossaryEnabled").checked = d.glossaryEnabled;
@@ -43,19 +42,14 @@ async function load() {
 document.getElementById("cli").addEventListener("change", async (e) => {
   const cli = e.target.value;
   await chrome.storage.sync.set({ cli });
-  const d = await chrome.storage.sync.get({
-    codexModel: DEFAULT_MODEL.codex,
-    claudeModel: DEFAULT_MODEL.claude
-  });
-  fillModelOptions(cli, cli === "codex" ? d.codexModel : d.claudeModel);
+  const d = await chrome.storage.sync.get(MODEL_DEFAULTS);
+  fillModelOptions(cli, d[modelKey(cli)]);
 });
 
 // 模型改變 → 即時儲存到對應 CLI 的 key
 document.getElementById("model").addEventListener("change", (e) => {
   const cli = document.getElementById("cli").value;
-  chrome.storage.sync.set({
-    [cli === "codex" ? "codexModel" : "claudeModel"]: e.target.value
-  });
+  chrome.storage.sync.set({ [modelKey(cli)]: e.target.value });
 });
 
 document.getElementById("save").addEventListener("click", async () => {

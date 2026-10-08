@@ -40,7 +40,7 @@ function makeKey(text, target, style, context, backend) {
 // node 測試走 require。兩者都把 AIYU 掛到全域(self/globalThis)。
 if (typeof importScripts === "function") importScripts("shared/models.js");
 else if (typeof require === "function") require("./shared/models.js");
-const { resolveModel, modelLabel, DEFAULT_MODEL, DEFAULT_GLOSSARY } = AIYU;
+const { resolveModel, modelLabel, MODEL_DEFAULTS, DEFAULT_GLOSSARY } = AIYU;
 
 function ensurePort() {
   if (port) return port;
@@ -110,8 +110,7 @@ async function callHost(action, payload, timeoutMs) {
 async function getSettings() {
   const d = await chrome.storage.sync.get({
     cli: "codex",
-    codexModel: DEFAULT_MODEL.codex,
-    claudeModel: DEFAULT_MODEL.claude,
+    ...MODEL_DEFAULTS,
     target: "zh-TW",
     style: "natural",
     customPrompt: "",

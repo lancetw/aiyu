@@ -298,6 +298,7 @@ function runCli(cli, prompt, model, context) {
   return new Promise((resolve, reject) => {
     let bin, args;
     let outFile = null; // codex 走 --output-last-message 寫檔，避免 stdout trace 污染
+    let logFile = null; // agy 輸出不含模型名 → 從 --log-file 讀實際路由到的模型
     let stdinPayload = null; // Windows shell 模式改走 stdin 餵 prompt，避免 cmd.exe 拆引號
 
     if (cli === "claude") {
@@ -332,7 +333,14 @@ function runCli(cli, prompt, model, context) {
       args.push(`${prompt.system}\n\n${prompt.user}`);
     } else if (cli === "agy") {
       bin = findExecutable("agy");
-      args = ["-p", `${prompt.system}\n\n${prompt.user}`];
+      // --model 必須在 -p 之前：-p 吃下一個 argv 當 prompt，放後面會把「--model」當成 prompt（且 exit 0）。
+      logFile = path.join(
+        os.tmpdir(),
+        `aiyu-agy-${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2)}.log`
+      );
+      args = ["--log-file", logFile];
+      if (model) args.push("--model", model);
+      args.push("-p", `${prompt.system}\n\n${prompt.user}`);
     } else {
       reject(new Error(`unknown cli: ${cli}`));
       return;
@@ -386,8 +394,8 @@ function runCli(cli, prompt, model, context) {
     let killed = false;
 
     const cleanup = () => {
-      if (outFile) {
-        try { fs.unlinkSync(outFile); } catch { /* ignore */ }
+      for (const f of [outFile, logFile]) {
+        if (f) try { fs.unlinkSync(f); } catch { /* ignore */ }
       }
     };
 
@@ -444,10 +452,13 @@ function runCli(cli, prompt, model, context) {
         reject(new Error(`${cli} ${code !== 0 ? `exited with code ${code}` : "reported an error"}: ${diag.slice(0, 200)}`));
         return;
       }
-      // 實際模型：claude 取 modelUsage 第一個鍵；codex 取 stderr 標頭「model: gpt-…」。取不到 → null。
+      // 實際模型：claude 取 modelUsage 第一個鍵；codex 取 stderr 標頭「model: gpt-…」；
+      // agy 取 log 的「selected model override … label="Gemini 3.8 Flash (Low)"」（內部 log 格式，
+      // 非公開介面 → 盡力而為）。取不到 → null，前端退回顯示所選值。
       const usedModel =
         cli === "claude" ? Object.keys(claudeJson?.modelUsage || {})[0] || null
         : cli === "codex" ? (stderr.match(/^model: (\S+)/m) || [])[1] || null
+        : cli === "agy" ? agyLoggedModel(logFile)
         : null;
       log("cli done", cli, usedModel || "", "in", elapsed + "s");
       let payload = text;
@@ -459,11 +470,20 @@ function runCli(cli, prompt, model, context) {
           reject(new Error(`讀取 codex 輸出失敗: ${e.message}`));
           return;
         }
-        cleanup();
       }
+      cleanup();
       resolve({ text: payload, model: usedModel });
     });
   });
+}
+
+function agyLoggedModel(logFile) {
+  try {
+    const hits = [...fs.readFileSync(logFile, "utf8").matchAll(/selected model override to backend: label="([^"]+)"/g)];
+    return hits.length ? hits[hits.length - 1][1] : null;
+  } catch {
+    return null;
+  }
 }
 
 function extractJsonArray(s) {
