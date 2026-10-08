@@ -4,6 +4,9 @@
 # 執行期 log
 *.log
 
+# host 執行期建立的 agy 隔離工作目錄（內容由 aiyu-host.js 的 AGY_AGENT_MD 產生）
+host/agy-workspace/
+
 # macOS
 .DS_Store
 

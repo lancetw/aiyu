@@ -294,11 +294,48 @@ function isQuotaError(stderr) {
   );
 }
 
+// agy 沒有 claude 的 --tools ""／--strict-mcp-config 這類旗標 → 改用自訂 agent：
+// excludeDefaultComponents 拿掉內建工具與預設 prompt 段落，inheritCustomizations:false 不帶入使用者的
+// rules（GEMINI.md/AGENTS.md）、skills、plugins、MCP。實測 input 從 ~17k 降到 ~1k tokens、模型不再
+// 看得到個人規則；僅剩內建 manage_task（無檔案／指令／網路能力）。
+// agy 只依「名稱」從工作目錄的 .agents/agents/ 找 agent（給檔案路徑會悄悄退回預設 agent）
+// → 在 host 旁建專用工作目錄，spawn 時以它為 cwd。
+const AGY_AGENT = "aiyu-translator";
+const AGY_WORKSPACE = path.join(__dirname, "agy-workspace");
+const AGY_AGENT_MD = `---
+name: ${AGY_AGENT}
+description: aiyu translator with no tools and no user customizations
+mainAgent: true
+excludeDefaultComponents: true
+inheritCustomizations: false
+tools: []
+---
+# System
+Follow the instructions in the user message exactly and output only what they ask for.
+`;
+
+// 建好（或修正）agy 專用工作目錄；失敗（host 目錄唯讀等）→ null，退回一般呼叫。
+function ensureAgyWorkspace() {
+  const f = path.join(AGY_WORKSPACE, ".agents", "agents", `${AGY_AGENT}.md`);
+  try {
+    if (fs.readFileSync(f, "utf8") === AGY_AGENT_MD) return AGY_WORKSPACE;
+  } catch { /* 不存在 → 建立 */ }
+  try {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, AGY_AGENT_MD);
+    return AGY_WORKSPACE;
+  } catch (e) {
+    log("agy workspace unavailable, running without isolation:", e.message);
+    return null;
+  }
+}
+
 function runCli(cli, prompt, model, context) {
   return new Promise((resolve, reject) => {
     let bin, args;
     let outFile = null; // codex 走 --output-last-message 寫檔，避免 stdout trace 污染
     let logFile = null; // agy 輸出不含模型名 → 從 --log-file 讀實際路由到的模型
+    let cwd = os.tmpdir();
     let stdinPayload = null; // Windows shell 模式改走 stdin 餵 prompt，避免 cmd.exe 拆引號
 
     if (cli === "claude") {
@@ -338,7 +375,13 @@ function runCli(cli, prompt, model, context) {
         os.tmpdir(),
         `aiyu-agy-${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2)}.log`
       );
-      args = ["--log-file", logFile];
+      // --disable-slash-commands：字幕裡的「/word」不可被當成指令或 skill 展開（同 claude 分支）
+      args = ["--log-file", logFile, "--disable-slash-commands"];
+      const ws = ensureAgyWorkspace();
+      if (ws) {
+        cwd = ws;
+        args.push("--agent", AGY_AGENT);
+      }
       if (model) args.push("--model", model);
       args.push("-p", `${prompt.system}\n\n${prompt.user}`);
     } else {
@@ -379,7 +422,7 @@ function runCli(cli, prompt, model, context) {
 
     const child = spawn(bin, args, {
       env,
-      cwd: os.tmpdir(),
+      cwd,
       stdio: [stdinPayload != null ? "pipe" : "ignore", "pipe", "pipe"],
       shell: useShell
     });
