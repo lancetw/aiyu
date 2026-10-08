@@ -560,10 +560,11 @@ function extractJsonArray(s) {
 
 async function handleMessage(msg) {
   if (msg.action === "ping") {
-    // 只回有人讀的欄位：popup 讀 node 與 available.*（host/version/各 CLI 路徑字串無任何消費者）。
+    // 只回有人讀的欄位：popup 讀 node、version（比對擴充版本、提示更新 host）與 available.*。
     writeMessage({
       id: msg.id,
       result: {
+        version: HOST_VERSION,
         node: process.version,
         available: detectAvailability()
       }

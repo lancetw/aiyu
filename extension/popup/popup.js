@@ -1,11 +1,19 @@
 const status = document.getElementById("status");
 
 // 模型清單／預設／下拉填充的單一來源 = ../shared/models.js（popup.html 先載入該檔，掛在 self.AIYU）。
-const { MODEL_DEFAULTS, modelKey, fillModelOptions } = AIYU;
+const { MODEL_DEFAULTS, modelKey, fillModelOptions, hostOutdated } = AIYU;
 
 function setStatus(text, kind = "info") {
   status.textContent = text;
   status.style.color = kind === "error" ? "#c0392b" : kind === "ok" ? "#2c8a3e" : "#666";
+}
+
+// host 版本落後擴充 → 提示更新（舊 host 不報錯，只會默默少掉新功能）
+function hostStatus(info) {
+  if (hostOutdated(info?.version, chrome.runtime.getManifest().version)) {
+    return [`host ${info?.version || "0.5.0 以前的版本"} 需要更新：npx @lancetw/aiyu`, "error"];
+  }
+  return [`host ${info.version} ok (${info.node || "?"})`, "ok"];
 }
 
 async function loadSettings() {
@@ -48,7 +56,7 @@ document.getElementById("model").addEventListener("change", (e) => {
 document.getElementById("ping").addEventListener("click", async () => {
   setStatus("測試 host…");
   const r = await chrome.runtime.sendMessage({ type: "ping-host" });
-  if (r?.ok) setStatus(`host ok (${r.info?.node || "?"})`, "ok");
+  if (r?.ok) setStatus(...hostStatus(r.info));
   else setStatus("host 失敗：" + (r?.error || ""), "error");
 });
 
@@ -91,6 +99,9 @@ document.getElementById("open-options").addEventListener("click", (e) => {
           setStatus("claude、codex、antigravity 都未安裝；請先設定 PATH 或安裝。", "error");
         }
       }
+      // 開 popup 即檢查：過舊才提示（優先於上面的 CLI 切換訊息），版本相符就不打擾
+      const [msg, kind] = hostStatus(pong.info);
+      if (kind === "error") setStatus(msg, kind);
     }
   } catch {}
 })();

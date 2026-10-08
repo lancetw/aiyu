@@ -317,6 +317,16 @@
     return `${name} · ${model === "" ? "自動" : prettyModel(model)}`;
   }
 
+  // host 是否過舊、需提示使用者更新：只比 major.minor（patch 版可能只改擴充端，不該誤報）。
+  // 0.5.0 以前的 host ping 不回版本 → 一律視為過舊。舊 host 不會報錯、只會默默少掉新功能，
+  // 這個檢查是使用者唯一的訊號。
+  function hostOutdated(hostVersion, extVersion) {
+    if (!hostVersion) return true;
+    const [hMajor, hMinor] = hostVersion.split(".").map(Number);
+    const [eMajor, eMinor] = extVersion.split(".").map(Number);
+    return hMajor < eMajor || (hMajor === eMajor && hMinor < eMinor);
+  }
+
   // 填入 #model 下拉(popup/options 共用)。無模型清單的後端 → 隱藏整列。需要 DOM，僅在頁面端呼叫。
   function fillModelOptions(cli, selected) {
     const sel = document.getElementById("model");
@@ -339,7 +349,7 @@
   }
 
   // MODELS/prettyModel 為檔內實作細節（fillModelOptions/modelLabel 內用），不對外匯出。
-  root.AIYU = { DEFAULT_MODEL, MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, resolveModel, modelLabel, fillModelOptions };
+  root.AIYU = { DEFAULT_MODEL, MODEL_DEFAULTS, DEFAULT_GLOSSARY, modelKey, resolveModel, modelLabel, fillModelOptions, hostOutdated };
 })(typeof self !== "undefined" ? self : globalThis);
 
 // node 測試：require 本檔即可拿到同一份(已掛在 globalThis.AIYU)。
