@@ -384,7 +384,8 @@ function runCli(cli, prompt, model, context, effort) {
         cwd = ws;
         args.push("--agent", AGY_AGENT);
       }
-      // 指定 --model 時 agy 必須帶 --effort（否則 exit 1）；擴充端保證有值。--effort 同樣要在 -p 之前。
+      // 基本型號（gemini-3.8-flash）必須搭 --effort，否則 exit 1；擴充端對指定型號送完整 slug（含強度）、
+      // 只在自動型號時帶 effort。--effort 同樣要在 -p 之前。
       if (model) args.push("--model", model);
       if (effort) args.push("--effort", effort);
       args.push("-p", `${prompt.system}\n\n${prompt.user}`);

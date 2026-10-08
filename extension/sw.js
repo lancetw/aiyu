@@ -160,10 +160,12 @@ async function translateBatch(segments, settings, context) {
   // timeout 320s：必須 > host 全後端 300s 上限，host 才會先逾時並回乾淨訊息
   //（CLI timeout／額度用盡），而非 SW 先誤判逾時。三層階梯：
   // host 300s < SW 320s < 前端 sendTranslate 340s。
+  // agy 指定型號 → 送完整 slug（gemini-3.8-flash-low），不另帶 effort：0.5.x host 不認得 effort，
+  // 只送基本型號會讓 agy 因缺 --effort 而 exit 1（擴充自動更新、host 不會）。清單組合皆為 `agy models` 實有 slug。
+  const wire = settings.cli === "agy" && model ? { model: `${model}-${effort}`, effort: null } : { model, effort };
   const { result, meta } = await callHost("translate", {
     cli: settings.cli,
-    model,
-    effort,
+    ...wire,
     target: settings.target,
     style: settings.style,
     context,
