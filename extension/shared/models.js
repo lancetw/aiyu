@@ -4,12 +4,15 @@
 //   - node 測試     ：require 本檔（會掛到 globalThis.AIYU 並 module.exports）
 // 全部走 classic 全域(self.AIYU)，故本檔不可用 import/export。
 (function (root) {
-  // 2026 模型清單。預設為各 CLI 最強的版本。claude 用版本字串(claude-<家族>-<版本>)以明確標示版本。
-  // 版本字串(claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 / claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5 /
-  // claude-sonnet-4-6 / claude-opus-4-8 / 4-7 / 4-6)由 claude CLI 本機安裝確認有效。
+  // 2026 模型清單。預設走「自動最新」，新模型上線不必改這裡：
+  //   - claude：別名 opus/sonnet/haiku，CLI 自動解析成該家族最新版（實測 opus → claude-opus-5-5）
+  //   - codex ：空字串 = 不帶 -m，由 codex 用 OpenAI 推薦的預設（實測 gpt-6.1-sol；主力型號，非最強的 Astra）
+  // 實際用到的版本由 host 回報（meta.model），翻譯後的標籤顯示真實版本。
+  // 下方固定版本給想鎖版本的人；版本字串皆經 host/smoke-model.js 實測有效。
   // 第 5 代主版本無小版本號(claude-opus-5)、5.5 起又有(claude-opus-5-5)，prettyModel 的小版本為選填即為此。
   const MODELS = {
     codex: [
+      { value: "", label: "自動（codex 推薦）" },
       { value: "gpt-6-luna", label: "GPT-6 Luna（最快最省）" },
       { value: "gpt-6.1-sol", label: "GPT-6.1 Sol（均衡）" },
       { value: "gpt-6-astra", label: "GPT-6 Astra（最強）" },
@@ -22,10 +25,13 @@
       { value: "gpt-5.4-mini", label: "GPT-5.4 mini" }
     ],
     claude: [
-      { value: "claude-haiku-5-5", label: "Haiku 5.5（最快最省）" },
-      { value: "claude-sonnet-5-5", label: "Sonnet 5.5（均衡）" },
-      { value: "claude-opus-5-5", label: "Opus 5.5（最強）" },
-      { value: "claude-opus-5", label: "Opus 5（上一代最強）" },
+      { value: "haiku", label: "Haiku 最新（最快最省）" },
+      { value: "sonnet", label: "Sonnet 最新（均衡）" },
+      { value: "opus", label: "Opus 最新（最強）" },
+      { value: "claude-haiku-5-5", label: "Haiku 5.5" },
+      { value: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+      { value: "claude-opus-5-5", label: "Opus 5.5" },
+      { value: "claude-opus-5", label: "Opus 5" },
       { value: "claude-sonnet-5", label: "Sonnet 5" },
       { value: "claude-haiku-4-5", label: "Haiku 4.5" },
       { value: "claude-opus-4-8", label: "Opus 4.8" },
@@ -34,7 +40,7 @@
       { value: "claude-opus-4-6", label: "Opus 4.6" }
     ]
   };
-  const DEFAULT_MODEL = { codex: "gpt-6-astra", claude: "claude-opus-5-5" };
+  const DEFAULT_MODEL = { codex: "", claude: "opus" };
 
   // 對岸詞→台灣詞用詞對照：注入翻譯 system prompt，由模型理解上下文取代，不做後處理字串替換。
   // 全新安裝即套用（sw.js getSettings 的 fallback）；使用者可在進階設定覆寫。
@@ -253,9 +259,9 @@
 
   // 由設定推出實際模型：agy（Antigravity）由帳號端自動路由、print 模式無法指定 → null。
   //
-  // codex 過清單白名單：OpenAI 會下架 slug（gpt-5.3-codex 下架後即 exit 1），而使用者選過的
+  // codex 過清單白名單（"" = 自動，也在清單內）：OpenAI 會下架 slug（gpt-5.3-codex 下架後即 exit 1），而使用者選過的
   // 舊值留在 storage（getSettings 的已存值覆蓋預設）→ 不驗證就會把死 slug 送進 CLI。
-  // 此處不對稱是刻意的：claude CLI 吃 haiku/sonnet/opus 別名，合法但本就不在清單內，
+  // 此處不對稱是刻意的：claude CLI 吃任意合法模型字串（含清單外的完整 id），
   // 套白名單會把可用設定打成預設。勿為了對稱而統一。
   function resolveModel(settings) {
     if (settings.cli === "codex") {
@@ -266,21 +272,25 @@
   }
 
   // 模型字串美化：claude 版本字串(claude-opus-4-7)→「Opus 4.7」、(claude-opus-5)→「Opus 5」。
-  // 小版本為選填：第 5 代起模型 id 只有主版本號。別名(opus/sonnet/haiku)與 codex(gpt-5.6-sol) 原樣放行。
+  // 小版本為選填：第 5 代主版本 id 只有主版本號。別名(opus)→「Opus 最新」；codex(gpt-6.1-sol) 原樣放行。
   function prettyModel(model) {
+    const cap = (f) => f[0].toUpperCase() + f.slice(1);
+    if (/^(opus|sonnet|haiku)$/.test(model || "")) return `${cap(model)} 最新`;
     const m = (model || "").match(/^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d+))?$/);
-    if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? "." + m[3] : ""}`;
+    if (m) return `${cap(m[1])} ${m[2]}${m[3] ? "." + m[3] : ""}`;
     return model;
   }
 
-  // 給使用者看的「翻譯用模型」標籤：後端 · 模型（agy 由帳號端路由、無模型 → 只顯示後端名）。
+  // 給使用者看的「翻譯用模型」標籤：後端 · 模型。null/undefined（agy、fallback 後未知）→ 只顯示後端名；
+  // ""（codex 自動）→「自動」。
   function modelLabel(cli, model) {
     const name =
       cli === "codex" ? "Codex"
       : cli === "claude" ? "Claude"
       : cli === "agy" ? "Antigravity"
       : (cli || "");
-    return model ? `${name} · ${prettyModel(model)}` : name;
+    if (model == null) return name;
+    return `${name} · ${model === "" ? "自動" : prettyModel(model)}`;
   }
 
   // 填入 #model 下拉(popup/options 共用)。agy 等無模型可選 → 隱藏整列。需要 DOM，僅在頁面端呼叫。

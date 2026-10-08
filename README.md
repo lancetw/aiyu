@@ -107,7 +107,7 @@ export AIYU_AGY_PATH=/your/path/to/agy
 | 設定 | 預設 | 說明 |
 |---|---|---|
 | `cli` | `codex` | 使用 `codex exec`、`claude -p` 或 `agy -p`（Antigravity 無模型可選） |
-| `model` | codex=`gpt-6-astra`、claude=`Opus 5.5` | 各後端使用的模型（預設為最強）；codex 可選 GPT-6 Luna / GPT-6.1 Sol / GPT-6 Astra / GPT-6 Sol / GPT-5.6 Sol / Terra / Luna / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku 5.5 / Sonnet 5.5 / Opus 5.5 / Opus 5 / Sonnet 5 / Haiku 4.5 / Opus 4.8 / Sonnet 4.6 / Opus 4.7 / Opus 4.6，UI 標示版本；Antigravity 由帳號端自動路由，無此選項 |
+| `model` | codex=自動、claude=`Opus 最新` | 各後端使用的模型。預設跟著 CLI 自動用最新：claude 用別名 `opus`（CLI 解析成最新 Opus），codex 不帶 `-m`（用 OpenAI 推薦的預設，通常是主力型號而非最強）；翻譯後的標籤顯示實際用到的版本。也可鎖定固定版本：codex 可選 GPT-6 Luna / GPT-6.1 Sol / GPT-6 Astra / GPT-6 Sol / GPT-5.6 Sol / Terra / Luna / 5.5 / 5.4 / 5.4 mini，claude 可選 Haiku / Sonnet 最新、Haiku 5.5 / Sonnet 5.5 / Opus 5.5 / Opus 5 / Sonnet 5 / Haiku 4.5 / Opus 4.8 / Sonnet 4.6 / Opus 4.7 / Opus 4.6；Antigravity 由帳號端自動路由，無此選項 |
 | `target` | `zh-TW` | 目標語言（繁中台灣 / 簡中 / 英 / 日） |
 | `style` | `natural` | natural / literal / academic |
 | `glossaryEnabled` | `false`（停用） | 是否套用台灣詞庫；須在進階設定勾選「啟用台灣詞庫」並儲存 |

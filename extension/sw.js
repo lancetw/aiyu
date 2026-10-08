@@ -171,13 +171,13 @@ async function translateBatch(segments, settings, context) {
     segments: need.map((n) => ({ id: n.seg.id, text: n.seg.text }))
   }, 320000);
 
-  // 預設標籤為使用者要求的模型；若 host fallback 到別的 CLI，改記實際使用的後端。
+  // 標籤優先用 host 回報的實際模型（別名 opus／codex 自動 → 解析後的版本）；舊版 host 無此欄 → 用要求的模型。
   let usedCli = settings.cli;
-  let usedModel = model;
+  let usedModel = meta?.model || model;
   // 若 host 自動 fallback 到別的 CLI，把使用者偏好同步成實際可用的
   if (meta?.fellBack && meta?.usedCli) {
     usedCli = meta.usedCli;
-    usedModel = null; // fallback 後 host 用對方 CLI 的預設模型，名稱未知 → 只顯示後端名
+    usedModel = meta.model || null; // fallback 後 host 用對方 CLI 的預設模型；host 未回報 → 只顯示後端名
     try {
       await chrome.storage.sync.set({ cli: meta.usedCli });
     } catch {}

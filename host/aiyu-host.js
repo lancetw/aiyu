@@ -308,7 +308,9 @@ function runCli(cli, prompt, model, context) {
         "--system-prompt", prompt.system,
         "--strict-mcp-config",
         "--no-session-persistence",
-        "--disable-slash-commands"
+        "--disable-slash-commands",
+        // json 輸出才帶 modelUsage → 取得別名(opus)實際解析成的版本(claude-opus-5-5)
+        "--output-format", "json"
       ];
       if (model) args.push("--model", model);
       args.push(prompt.user);
@@ -419,10 +421,18 @@ function runCli(cli, prompt, model, context) {
       clearTimeout(timer);
       if (killed) return;
       const elapsed = ((Date.now() - spawnT0) / 1000).toFixed(1);
-      if (code !== 0) {
+      // claude --output-format json：result 為模型輸出（或錯誤訊息），modelUsage 的鍵為實際模型。
+      let claudeJson = null;
+      if (cli === "claude") {
+        try { claudeJson = JSON.parse(stdout); } catch { /* 非 JSON（舊版 CLI 等）→ 當純文字 */ }
+      }
+      // 解析成功但無 result（非 success 的 subtype）→ 空字串，免得 extractJsonArray 從 JSON 外殼撈出無關的 [...]。
+      const text = claudeJson ? String(claudeJson.result ?? "") : stdout;
+      if (code !== 0 || claudeJson?.is_error) {
         // claude -p 把致命錯誤（「Not logged in · Please run /login」、OAuth 逾期）寫到
         // stdout 而非 stderr → 只看 stderr 會得到空字串，錯誤在日誌與 UI 都無法辨識。
-        const diag = (stderr.trim() || stdout.trim());
+        // json 模式下 result 即錯誤訊息，優先取用（stderr 可能只有無關警告）。
+        const diag = (claudeJson?.is_error && text.trim()) || stderr.trim() || text.trim();
         log("cli non-zero exit", code, "after", elapsed + "s", "err:", diag.slice(0, 500));
         cleanup();
         if (isQuotaError(diag)) {
@@ -434,8 +444,13 @@ function runCli(cli, prompt, model, context) {
         reject(new Error(`${cli} exited with code ${code}: ${diag.slice(0, 200)}`));
         return;
       }
-      log("cli done", cli, "in", elapsed + "s");
-      let payload = stdout;
+      // 實際模型：claude 取 modelUsage 第一個鍵；codex 取 stderr 標頭「model: gpt-…」。取不到 → null。
+      const usedModel =
+        cli === "claude" ? Object.keys(claudeJson?.modelUsage || {})[0] || null
+        : cli === "codex" ? (stderr.match(/^model: (\S+)/m) || [])[1] || null
+        : null;
+      log("cli done", cli, usedModel || "", "in", elapsed + "s");
+      let payload = text;
       if (outFile) {
         try {
           payload = fs.readFileSync(outFile, "utf8");
@@ -446,7 +461,7 @@ function runCli(cli, prompt, model, context) {
         }
         cleanup();
       }
-      resolve(payload);
+      resolve({ text: payload, model: usedModel });
     });
   });
 }
@@ -518,8 +533,8 @@ async function handleMessage(msg) {
       context: msg.context
     });
     try {
-      const stdout = await runCli(picked.cli, prompt, effectiveModel, msg.context);
-      const parsed = extractJsonArray(stdout);
+      const { text, model: usedModel } = await runCli(picked.cli, prompt, effectiveModel, msg.context);
+      const parsed = extractJsonArray(text);
       const result = parsed
         // 譯文鍵容許 text：模型偶爾沿用輸入的 {id,text} 形狀（Opus 5.5 實測）→ 不收就整批變空結果。
         .filter((x) => x && typeof x === "object" && "id" in x && ("zh" in x || "text" in x))
@@ -527,7 +542,7 @@ async function handleMessage(msg) {
       writeMessage({
         id: msg.id,
         result,
-        meta: { usedCli: picked.cli, fellBack: picked.fellBack || false }
+        meta: { usedCli: picked.cli, fellBack: picked.fellBack || false, model: usedModel }
       });
     } catch (e) {
       log("translate error", e.message);
