@@ -467,7 +467,15 @@ function extractJsonArray(s) {
   if (start === -1 || end === -1 || end <= start) {
     throw new Error("找不到 JSON 陣列輸出");
   }
-  return JSON.parse(s.slice(start, end + 1));
+  try {
+    return JSON.parse(s.slice(start, end + 1));
+  } catch (e) {
+    // 陣列後又補說明或第二個陣列（Opus 5.5 實測會「自我修正」再吐一次）→ 取第一個能解析的陣列。
+    for (let i = s.indexOf("]", start); i !== -1 && i < end; i = s.indexOf("]", i + 1)) {
+      try { return JSON.parse(s.slice(start, i + 1)); } catch { /* 繼續往後找 */ }
+    }
+    throw e;
+  }
 }
 
 // ----- Message handlers -----
@@ -513,8 +521,9 @@ async function handleMessage(msg) {
       const stdout = await runCli(picked.cli, prompt, effectiveModel, msg.context);
       const parsed = extractJsonArray(stdout);
       const result = parsed
-        .filter((x) => x && typeof x === "object" && "id" in x && "zh" in x)
-        .map((x) => ({ id: String(x.id), zh: String(x.zh) }));
+        // 譯文鍵容許 text：模型偶爾沿用輸入的 {id,text} 形狀（Opus 5.5 實測）→ 不收就整批變空結果。
+        .filter((x) => x && typeof x === "object" && "id" in x && ("zh" in x || "text" in x))
+        .map((x) => ({ id: String(x.id), zh: String(x.zh ?? x.text) }));
       writeMessage({
         id: msg.id,
         result,
