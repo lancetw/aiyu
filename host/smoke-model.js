@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const cli = process.argv[2] || "claude";
-const model = process.argv[3] || (cli === "codex" ? "gpt-5.4-mini" : "haiku");
+// ?? 而非 ||：傳 "" 才能測 codex 自動（不帶 -m）
+const model = process.argv[3] ?? (cli === "codex" ? "gpt-5.4-mini" : "haiku");
 
 const host = spawn(process.execPath, [path.join(__dirname, "aiyu-host.js")], {
   stdio: ["pipe", "pipe", "inherit"]

@@ -441,7 +441,7 @@ function runCli(cli, prompt, model, context) {
           reject(new Error(`翻譯額度用盡，請稍後再試（${cli}）`));
           return;
         }
-        reject(new Error(`${cli} exited with code ${code}: ${diag.slice(0, 200)}`));
+        reject(new Error(`${cli} ${code !== 0 ? `exited with code ${code}` : "reported an error"}: ${diag.slice(0, 200)}`));
         return;
       }
       // 實際模型：claude 取 modelUsage 第一個鍵；codex 取 stderr 標頭「model: gpt-…」。取不到 → null。
@@ -535,9 +535,12 @@ async function handleMessage(msg) {
     try {
       const { text, model: usedModel } = await runCli(picked.cli, prompt, effectiveModel, msg.context);
       const parsed = extractJsonArray(text);
+      const srcById = new Map(segments.map((x) => [String(x.id), x.text]));
       const result = parsed
         // 譯文鍵容許 text：模型偶爾沿用輸入的 {id,text} 形狀（Opus 5.5 實測）→ 不收就整批變空結果。
-        .filter((x) => x && typeof x === "object" && "id" in x && ("zh" in x || "text" in x))
+        // 但 text 與原文相同＝原樣回聲、非譯文 → 不收，留給上層當未翻譯重試，免得原文被快取成譯文。
+        .filter((x) => x && typeof x === "object" && "id" in x &&
+          ("zh" in x || ("text" in x && x.text !== srcById.get(String(x.id)))))
         .map((x) => ({ id: String(x.id), zh: String(x.zh ?? x.text) }));
       writeMessage({
         id: msg.id,
