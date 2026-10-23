@@ -94,9 +94,18 @@ function nmhDir(b) {
   return b.linux ? path.join(CFG, b.linux, "NativeMessagingHosts") : null; // linux
 }
 
-// 移除 Flatpak 後 ~/.var/app 會殘留 → 另外確認 app 還裝著（系統或使用者安裝）
+function flatpak(args) {
+  return execFileSync("flatpak", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+}
+
+// 移除 Flatpak 後 ~/.var/app 會殘留 → 以 flatpak 本身為準（含 SD 卡等自訂 installation）
 function flatpakInstalled(id) {
-  return [path.join(HOME, ".local/share/flatpak/app", id), path.join("/var/lib/flatpak/app", id)].some((p) => fs.existsSync(p));
+  try { flatpak(["info", id]); return true; } catch { return false; }
+}
+
+// 實際生效的權限（含使用者／系統 override），不是只看我們有沒有跑過 override
+function flatpakCanSpawnHost(id) {
+  try { return /^org\.freedesktop\.Flatpak=talk$/m.test(flatpak(["info", "--show-permissions", id])); } catch { return false; }
 }
 
 // 偵測：unix 上「NativeMessagingHosts 父目錄存在」視為已裝；win best-effort（無法可靠偵測）回傳所有有機碼者
@@ -273,13 +282,19 @@ exec "${node}" "${hostJsDst}" "$@"
   if (registered === 0)
     console.error("\n⚠ 沒偵測到任何已安裝的 Chromium 系瀏覽器。host 已就位，但未寫入任何瀏覽器。");
 
-  const flatpaks = targets.filter((b) => b.flatpak);
-  if (flatpaks.length) {
-    // 不代跑：這會讓瀏覽器能在 sandbox 外執行指令，由使用者自己決定
-    log("\n──────── Flatpak 瀏覽器：再跑一次授權（讓瀏覽器能啟動 sandbox 外的 host）────────");
-    for (const b of flatpaks) log(`  flatpak override --user --talk-name=org.freedesktop.Flatpak ${b.flatpak}`);
-    log("  跑完後完全關閉瀏覽器再開（Steam Deck 遊戲模式下請切回桌面模式操作）。");
+  // Flatpak 瀏覽器要有 org.freedesktop.Flatpak 的 talk 權限，wrapper 的 flatpak-spawn --host 才能啟動 host。
+  // 這等於讓該瀏覽器能在 sandbox 外執行指令 —— 只授權給選中且確實已安裝的 Flatpak 瀏覽器。
+  let granted = 0;
+  for (const b of targets.filter((b) => b.flatpak)) {
+    if (flatpakCanSpawnHost(b.flatpak)) { log(`✓ ${b.label} 已有啟動 host 的權限`); continue; }
+    const args = ["override", "--user", "--talk-name=org.freedesktop.Flatpak", b.flatpak];
+    step(`flatpak ${args.join(" ")}（讓 ${b.label} 能啟動 sandbox 外的 host）`);
+    if (DRY) continue;
+    try { flatpak(args); } catch { /* 下面以實際權限判斷成敗 */ }
+    if (flatpakCanSpawnHost(b.flatpak)) granted++;
+    else console.error(`  ⚠ ${b.label} 授權沒生效，請手動執行：flatpak ${args.join(" ")}`);
   }
+  if (granted) log("  已授權的 Flatpak 瀏覽器請完全關閉再開，授權才會生效。");
 
   printExtensionSteps();
   log(`\n✓ host 安裝完成（${registered} 個瀏覽器位置）。`);
