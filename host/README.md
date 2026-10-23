@@ -19,7 +19,13 @@ npx @lancetw/aiyu --all                      # all detected browsers
 npx @lancetw/aiyu --browsers=chrome,brave    # only these
 ```
 
-Valid ids: `chrome, canary, beta, dev, testing, chromium, edge, brave, arc`.
+Valid ids: `chrome, canary, beta, dev, testing, chromium, edge, brave, arc, chrome-flatpak, chromium-flatpak, edge-flatpak, brave-flatpak`.
+
+Flatpak browsers (e.g. Steam Deck) also need one permission grant so the browser can start the host outside its sandbox; the installer prints the exact command:
+
+```sh
+flatpak override --user --talk-name=org.freedesktop.Flatpak com.google.Chrome
+```
 
 ## Requirements
 

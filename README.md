@@ -63,6 +63,10 @@ npx @lancetw/aiyu
 `HKCU\…\NativeMessagingHosts` 登錄檔）。偵測到的
 Chrome / Chrome Canary / Chromium / Edge / Brave / Arc 都會註冊（可加 `--browsers chrome,brave` 只裝特定幾個，或 `--all` 強制全裝）。
 
+Linux 的 Flatpak 版 Chrome / Chromium / Edge / Brave（例如 Steam Deck）也會偵測到，id 為 `chrome-flatpak` 等。
+Flatpak 瀏覽器另需授權一次，讓它能啟動 sandbox 外的 host（安裝器會印出指令），完成後重開瀏覽器：
+`flatpak override --user --talk-name=org.freedesktop.Flatpak com.google.Chrome`。
+
 - `npx @lancetw/aiyu --dry-run`：只印出會做什麼，不實際寫入。
 - `npx @lancetw/aiyu --uninstall`：移除 host 註冊。
 

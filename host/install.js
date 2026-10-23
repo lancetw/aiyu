@@ -74,14 +74,29 @@ const BROWSERS = [
   { id: "edge",     label: "Microsoft Edge",            mac: "Microsoft Edge",                linux: "microsoft-edge",         win: "Software\\Microsoft\\Edge" },
   { id: "brave",    label: "Brave",                     mac: "BraveSoftware/Brave-Browser",   linux: "BraveSoftware/Brave-Browser", win: "Software\\BraveSoftware\\Brave-Browser" },
   { id: "arc",      label: "Arc",                       mac: "Arc/User Data",                 linux: null,                     win: null },
+  // Flatpak（Steam Deck 等）：flatpak = app id；設定在 ~/.var/app/<id>/config/<linux>。
+  { id: "chrome-flatpak",   label: "Google Chrome (Flatpak)", mac: null, linux: "google-chrome",               win: null, flatpak: "com.google.Chrome" },
+  { id: "chromium-flatpak", label: "Chromium (Flatpak)",      mac: null, linux: "chromium",                    win: null, flatpak: "org.chromium.Chromium" },
+  { id: "edge-flatpak",     label: "Microsoft Edge (Flatpak)", mac: null, linux: "microsoft-edge",             win: null, flatpak: "com.microsoft.Edge" },
+  { id: "brave-flatpak",    label: "Brave (Flatpak)",         mac: null, linux: "BraveSoftware/Brave-Browser", win: null, flatpak: "com.brave.Browser" },
 ];
+
+// Flatpak 的 sandbox 看不到 ~/.local/share、也沒有主機的 node → manifest 改指向放在 sandbox 可見目錄的 wrapper，
+// 由它經 flatpak-spawn 回主機跑 launcher。需要瀏覽器有 org.freedesktop.Flatpak 的 talk 權限（安裝後印出指令）。
+const FLATPAK_WRAPPER = "aiyu-host-flatpak.sh";
 
 // 該瀏覽器在本平台的 NativeMessagingHosts 目錄（不支援則回 null）
 function nmhDir(b) {
   const ASUP = path.join(HOME, "Library/Application Support");
   const CFG = process.env.XDG_CONFIG_HOME || path.join(HOME, ".config");
   if (PLATFORM === "darwin") return b.mac ? path.join(ASUP, b.mac, "NativeMessagingHosts") : null;
+  if (b.flatpak) return path.join(HOME, ".var/app", b.flatpak, "config", b.linux, "NativeMessagingHosts");
   return b.linux ? path.join(CFG, b.linux, "NativeMessagingHosts") : null; // linux
+}
+
+// 移除 Flatpak 後 ~/.var/app 會殘留 → 另外確認 app 還裝著（系統或使用者安裝）
+function flatpakInstalled(id) {
+  return [path.join(HOME, ".local/share/flatpak/app", id), path.join("/var/lib/flatpak/app", id)].some((p) => fs.existsSync(p));
 }
 
 // 偵測：unix 上「NativeMessagingHosts 父目錄存在」視為已裝；win best-effort（無法可靠偵測）回傳所有有機碼者
@@ -89,7 +104,7 @@ function detectedBrowsers() {
   if (PLATFORM === "win32") return BROWSERS.filter((b) => b.win);
   return BROWSERS.filter((b) => {
     const d = nmhDir(b);
-    return d && fs.existsSync(path.dirname(d));
+    return d && fs.existsSync(path.dirname(d)) && (!b.flatpak || flatpakInstalled(b.flatpak));
   });
 }
 
@@ -113,6 +128,7 @@ function resolveSelection({ browsersFlag, all, isTTY, detectedIds }) {
 
 // TTY 互動多選；只在此分支才動態載入 clack。未安裝則 fail-soft 退回全裝。
 async function pickInteractive(detected) {
+  if (detected.length === 0) return []; // clack multiselect 收到空 options 會崩潰；交給後面的「沒偵測到」提示
   let clack;
   try {
     clack = await import("@clack/prompts");
@@ -228,13 +244,27 @@ exec "${node}" "${hostJsDst}" "$@"
     }
   } else {
     for (const b of targets) {
-      writeFile(path.join(nmhDir(b), `${HOST_NAME}.json`), manifest);
+      let m = manifest;
+      if (b.flatpak) {
+        const wrapper = path.join(nmhDir(b), FLATPAK_WRAPPER);
+        writeFile(wrapper, `#!/bin/sh\nexec flatpak-spawn --host "${launcherPath}" "$@"\n`, 0o755);
+        m = JSON.stringify(manifestObject(wrapper), null, 2);
+      }
+      writeFile(path.join(nmhDir(b), `${HOST_NAME}.json`), m);
       registered++;
     }
   }
 
   if (registered === 0)
     console.error("\n⚠ 沒偵測到任何已安裝的 Chromium 系瀏覽器。host 已就位，但未寫入任何瀏覽器。");
+
+  const flatpaks = targets.filter((b) => b.flatpak);
+  if (flatpaks.length) {
+    // 不代跑：這會讓瀏覽器能在 sandbox 外執行指令，由使用者自己決定
+    log("\n──────── Flatpak 瀏覽器：再跑一次授權（讓瀏覽器能啟動 sandbox 外的 host）────────");
+    for (const b of flatpaks) log(`  flatpak override --user --talk-name=org.freedesktop.Flatpak ${b.flatpak}`);
+    log("  跑完後完全關閉瀏覽器再開（Steam Deck 遊戲模式下請切回桌面模式操作）。");
+  }
 
   printExtensionSteps();
   log(`\n✓ host 安裝完成（${registered} 個瀏覽器位置）。`);
@@ -279,8 +309,10 @@ function doUninstall() {
       if (!inScope(b)) continue;
       const d = nmhDir(b);
       if (!d) continue;
-      const out = path.join(d, `${HOST_NAME}.json`);
-      if (fs.existsSync(out)) { step(`刪除 ${out}`); if (!DRY) fs.rmSync(out); }
+      for (const f of [`${HOST_NAME}.json`, FLATPAK_WRAPPER]) {
+        const out = path.join(d, f);
+        if (fs.existsSync(out)) { step(`刪除 ${out}`); if (!DRY) fs.rmSync(out); }
+      }
     }
   }
   if (!onlyIds) {
@@ -311,7 +343,7 @@ async function main() {
   return doInstall();
 }
 
-export { parseBrowsersFlag, resolveSelection };
+export { parseBrowsersFlag, resolveSelection, pickInteractive };
 
 // 直接執行才跑 main；被 import（測試）時不跑。
 // 用 realpath 比對而非字串相等：npx/npm 透過 node_modules/.bin/<name> 的 symlink 啟動 bin，

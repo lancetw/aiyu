@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseBrowsersFlag, resolveSelection } from "./install.js";
+import { parseBrowsersFlag, resolveSelection, pickInteractive } from "./install.js";
 
 const installJs = fileURLToPath(new URL("./install.js", import.meta.url));
 
@@ -60,4 +60,42 @@ test("經 symlink 啟動（npx/.bin 情境）時 main() 仍會執行", () => {
   symlinkSync(installJs, link);
   const out = execFileSync(process.execPath, [link, "--help"], { encoding: "utf8" });
   assert.match(out, /native host 安裝器/); // 有印出 help banner = main() 透過 symlink 也有跑
+});
+
+test("pickInteractive: 沒偵測到瀏覽器 → 回空陣列，不把空選單丟給 clack（clack 會崩潰）", async () => {
+  assert.deepEqual(await pickInteractive([]), []);
+});
+
+// 在假 HOME 裡跑安裝器；只帶 PATH，避免 XDG_* 把寫入導向真實家目錄。
+function runInstaller(home, args) {
+  return execFileSync(process.execPath, [installJs, ...args], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH, HOME: home },
+  });
+}
+
+test("linux: Flatpak Chrome → manifest 指向 sandbox 內可見的 wrapper，wrapper 經 flatpak-spawn 回主機跑 launcher", { skip: process.platform !== "linux" }, () => {
+  const home = mkdtempSync(path.join(tmpdir(), "aiyu-home-"));
+  const cfg = path.join(home, ".var/app/com.google.Chrome/config/google-chrome");
+  mkdirSync(cfg, { recursive: true });
+  mkdirSync(path.join(home, ".local/share/flatpak/app/com.google.Chrome"), { recursive: true });
+  runInstaller(home, ["--all"]);
+
+  const nmh = path.join(cfg, "NativeMessagingHosts");
+  const manifest = JSON.parse(readFileSync(path.join(nmh, "com.lancetw.aiyu.json"), "utf8"));
+  const wrapper = path.join(nmh, "aiyu-host-flatpak.sh");
+  assert.equal(manifest.path, wrapper);
+  const launcher = path.join(home, ".local/share/aiyu/aiyu-host-launcher.sh");
+  assert.match(readFileSync(wrapper, "utf8"), new RegExp(`exec flatpak-spawn --host "${launcher}" "\\$@"`));
+
+  runInstaller(home, ["--uninstall"]);
+  assert.equal(existsSync(wrapper), false);
+});
+
+test("linux: 只剩 ~/.var/app 殘留設定、Flatpak 已移除 → 不算偵測到", { skip: process.platform !== "linux" }, () => {
+  const home = mkdtempSync(path.join(tmpdir(), "aiyu-home-"));
+  const cfg = path.join(home, ".var/app/org.chromium.Chromium/config/chromium");
+  mkdirSync(cfg, { recursive: true });
+  runInstaller(home, ["--all"]);
+  assert.equal(existsSync(path.join(cfg, "NativeMessagingHosts")), false);
 });
