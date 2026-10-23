@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, symlinkSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, readFileSync, writeFileSync, existsSync, lstatSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,4 +98,34 @@ test("linux: 只剩 ~/.var/app 殘留設定、Flatpak 已移除 → 不算偵測
   mkdirSync(cfg, { recursive: true });
   runInstaller(home, ["--all"]);
   assert.equal(existsSync(path.join(cfg, "NativeMessagingHosts")), false);
+});
+
+// ~/.var/app/<id> 在 sandbox 內可寫：被攻陷的瀏覽器可預先放 symlink，誘導安裝器覆寫 sandbox 外的檔案。
+function flatpakHome() {
+  const home = mkdtempSync(path.join(tmpdir(), "aiyu-home-"));
+  mkdirSync(path.join(home, ".local/share/flatpak/app/com.google.Chrome"), { recursive: true });
+  const cfg = path.join(home, ".var/app/com.google.Chrome/config/google-chrome");
+  mkdirSync(cfg, { recursive: true });
+  const victim = path.join(home, "victim");
+  writeFileSync(victim, "keep");
+  return { home, cfg, victim };
+}
+
+test("linux: Flatpak NMH 目錄裡的檔案是 symlink → 不跟隨，sandbox 外的檔案不被覆寫", { skip: process.platform !== "linux" }, () => {
+  const { home, cfg, victim } = flatpakHome();
+  mkdirSync(path.join(cfg, "NativeMessagingHosts"));
+  symlinkSync(victim, path.join(cfg, "NativeMessagingHosts/aiyu-host-flatpak.sh"));
+  symlinkSync(victim, path.join(cfg, "NativeMessagingHosts/com.lancetw.aiyu.json"));
+  runInstaller(home, ["--all"]);
+  assert.equal(readFileSync(victim, "utf8"), "keep");
+  assert.equal(lstatSync(path.join(cfg, "NativeMessagingHosts/aiyu-host-flatpak.sh")).isSymbolicLink(), false);
+});
+
+test("linux: Flatpak NMH 目錄本身是 symlink → 拒絕寫入", { skip: process.platform !== "linux" }, () => {
+  const { home, cfg } = flatpakHome();
+  const outside = path.join(home, "outside");
+  mkdirSync(outside);
+  symlinkSync(outside, path.join(cfg, "NativeMessagingHosts"));
+  assert.throws(() => runInstaller(home, ["--all"]));
+  assert.deepEqual(readdirSync(outside), []);
 });

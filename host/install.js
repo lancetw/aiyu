@@ -170,6 +170,19 @@ function writeFile(p, content, mode) {
   if (mode) fs.chmodSync(p, mode);
 }
 
+// Flatpak 的 NMH 目錄在 sandbox 內可寫 → 不跟隨 symlink，免得被誘導覆寫 sandbox 外的檔案。
+// shortcut: 檢查與寫入之間仍有競態（Node 沒有 openat/O_NOFOLLOW 目錄版）；需要時改用原生模組。
+function writeSandboxFile(appRoot, p, content, mode) {
+  step(`寫入 ${p}`);
+  if (DRY) return;
+  const dir = path.dirname(p);
+  fs.mkdirSync(dir, { recursive: true });
+  if (fs.realpathSync(dir) !== path.join(fs.realpathSync(appRoot), path.relative(appRoot, dir)))
+    throw new Error(`拒絕寫入：${dir} 路徑中有 symlink`);
+  fs.rmSync(p, { force: true }); // 刪掉的是 symlink 本身，不是它指向的檔
+  fs.writeFileSync(p, content, { flag: "wx", mode });
+}
+
 async function doInstall() {
   if (!fs.existsSync(HOST_JS_SRC)) {
     console.error(`✗ 找不到 host：${HOST_JS_SRC}（請從 repo 根目錄附近執行）`);
@@ -244,13 +257,15 @@ exec "${node}" "${hostJsDst}" "$@"
     }
   } else {
     for (const b of targets) {
-      let m = manifest;
+      const manifestPath = path.join(nmhDir(b), `${HOST_NAME}.json`);
       if (b.flatpak) {
+        const appRoot = path.join(HOME, ".var/app", b.flatpak);
         const wrapper = path.join(nmhDir(b), FLATPAK_WRAPPER);
-        writeFile(wrapper, `#!/bin/sh\nexec flatpak-spawn --host "${launcherPath}" "$@"\n`, 0o755);
-        m = JSON.stringify(manifestObject(wrapper), null, 2);
+        writeSandboxFile(appRoot, wrapper, `#!/bin/sh\nexec flatpak-spawn --host "${launcherPath}" "$@"\n`, 0o755);
+        writeSandboxFile(appRoot, manifestPath, JSON.stringify(manifestObject(wrapper), null, 2));
+      } else {
+        writeFile(manifestPath, manifest);
       }
-      writeFile(path.join(nmhDir(b), `${HOST_NAME}.json`), m);
       registered++;
     }
   }
