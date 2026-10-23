@@ -58,7 +58,8 @@ console.log(`
   8. 等 npm 上架：curl -s https://registry.npmjs.org/@lancetw/aiyu/${NEW} 回 JSON、tarball 回 200
      （別用 npm view：本機若有 pmg 等 cooldown 包裝，新版會被藏起來）
   9. gh release create v${NEW} --verify-tag --title "v${NEW} — <標題>" --notes-file <說明>
- 10. 上傳 zip 到 Chrome Web Store（手動）`);
+ 10. 上傳 zip 到 Chrome Web Store（手動）
+     （git diff v<上一版> -- extension/ 只有 manifest 版號時跳過，release note 改寫「Chrome Web Store 維持 <上一版>」）`);
 
 function patch(file, re, replacement) {
   const before = readFileSync(file, "utf8");
