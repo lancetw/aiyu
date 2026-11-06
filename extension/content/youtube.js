@@ -1255,7 +1255,12 @@
     const scheduler = aiyuCreateScheduler(groupObjs, { retryCap: RETRY_CAP });
     const total = todoIdx.length;
     let firstError = "";
-    let quotaHit = false; // 偵測到額度用盡 → 立刻中止整輪，不再連敲已鎖額度的 CLI
+    // 額度用盡／CLI 未登入 → 立刻中止整輪：再敲只會撞同一面牆（未登入的 agy 每次呼叫都開一個登入視窗）。
+    let haltBadge = "";
+    const noteHalt = (err) => {
+      if (err.includes("額度用盡")) haltBadge = "⚠ 翻譯額度用盡，請稍後再試";
+      else if (err.includes("需要登入")) haltBadge = `⚠ ${err}`;
+    };
     progressPct = 0;
     // 已拿到「真譯文」的句數（exhausted 回退原文是收尾時才設，迴圈中 zh!==null ⟺ 真譯文）
     const realDone = () => todoIdx.reduce((a, i) => a + (cuesRef[i].zh !== null ? 1 : 0), 0);
@@ -1280,12 +1285,12 @@
         else {
           const err = r?.error || "host 無回應";
           if (!firstError) firstError = err;
-          if (err.includes("額度用盡")) quotaHit = true;
+          noteHalt(err);
         }
       } catch (e) {
         const err = e?.message || "連線中斷";
         if (!firstError) firstError = err;
-        if (err.includes("額度用盡")) quotaHit = true;
+        noteHalt(err);
       }
 
       if (!resp) return { ok: false, failedIdxs: idxList.slice() };
@@ -1303,7 +1308,7 @@
 
     // 並行 CONCURRENCY 條（見下方常數）。scheduler 保證：失敗群組優先重排、重試到上限才放棄（永不無聲當作完成）。
     async function worker() {
-      while (active && runSeq === myRun && !quotaHit) {
+      while (active && runSeq === myRun && !haltBadge) {
         const video = getVideo();
         const t = video ? video.currentTime : 0;
         const gi = scheduler.pickNext(t);
@@ -1313,7 +1318,7 @@
           return;
         }
         const { ok } = await translateGroup(groupObjs[gi].idxs);
-        if (quotaHit) return; // 額度用盡 → 立刻收工
+        if (haltBadge) return; // 額度用盡／未登入 → 立刻收工
         scheduler.record(gi, ok);
         if (!active || runSeq !== myRun) return;
         curIdx = -1; // 可能剛翻好 → 立刻重畫目前字幕
@@ -1339,11 +1344,11 @@
     // 診斷：印出實際錯誤字串，方便判斷是否被正確辨識為「額度用盡」
     if (firstError) console.warn("[aiyu] 翻譯結束有錯誤，firstError =", JSON.stringify(firstError));
 
-    if (quotaHit) {
-      // 額度用盡：右上角持續顯示、不自動淡出。未譯 cue 維持 null（不回退原文鎖死成英文），
-      // 額度恢復後可用選單「重新翻譯」或下次啟動補回。
+    if (haltBadge) {
+      // 額度用盡／未登入：右上角持續顯示、不自動淡出。未譯 cue 維持 null（不回退原文鎖死成英文），
+      // 恢復後可用選單「重新翻譯」或下次啟動補回。
       unresolvedCues = todoIdx.filter((i) => cuesRef[i].zh === null);
-      setBadge("⚠ 翻譯額度用盡，請稍後再試", "error");
+      setBadge(haltBadge, "error");
     } else {
       const unresolved = todoIdx.filter((i) => cuesRef[i].zh === null);
       if (unresolved.length) {

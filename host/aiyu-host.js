@@ -491,6 +491,11 @@ function runCli(cli, prompt, model, context, effort) {
         const diag = (claudeJson?.is_error && text.trim()) || stderr.trim() || text.trim();
         log("cli non-zero exit", code, "after", elapsed + "s", "err:", diag.slice(0, 500));
         cleanup();
+        if (isLoginError(diag)) {
+          // 關鍵字「需要登入」：擴充據此中止整輪、不再重試（未登入的 agy 每次呼叫都開一個登入視窗）。
+          reject(new Error(`${cli} 需要登入：請在終端機執行 ${cli} 完成登入後重試`));
+          return;
+        }
         if (isQuotaError(diag)) {
           // 額度用盡：給乾淨、可辨識的訊息（關鍵字「額度用盡」），讓前端在影片
           // 右上角顯示專屬狀態。否則 stderr.slice(0,200) 會把 usage-limit 字樣切掉。
@@ -523,6 +528,38 @@ function runCli(cli, prompt, model, context, effort) {
       resolve({ text: payload, model: usedModel });
     });
   });
+}
+
+// agy「Authentication required. Please visit the URL…」、claude「Not logged in · Please run /login」
+function isLoginError(s) {
+  return /authentication required|not logged in|please run \/login/i.test(s || "");
+}
+
+// agy 未登入時，每個程序都自己開一個 Google 登入視窗、約 60 秒後才失敗；擴充又並行送多組字幕。
+// → 登入未確認前一次只跑一個 agy，其餘等它的結果：成功就放行並行，「需要登入」就一起帶回同一個錯誤。
+let agyLoggedIn = false;
+let agyProbe = null;
+function runCliAuthGated(cli, ...rest) {
+  if (cli !== "agy") return runCli(cli, ...rest);
+  if (agyLoggedIn) {
+    return runCli(cli, ...rest).catch((e) => {
+      if (e.message.includes("需要登入")) agyLoggedIn = false; // 登入中途失效 → 下一波重新只放一個
+      throw e;
+    });
+  }
+  if (agyProbe) {
+    return agyProbe.then(
+      () => runCliAuthGated(cli, ...rest),
+      (e) => {
+        if (e.message.includes("需要登入")) throw e;
+        return runCliAuthGated(cli, ...rest);
+      }
+    );
+  }
+  agyProbe = runCli(cli, ...rest)
+    .then((r) => { agyLoggedIn = true; return r; })
+    .finally(() => { agyProbe = null; });
+  return agyProbe;
 }
 
 function agyLoggedModel(logFile) {
@@ -607,7 +644,7 @@ async function handleMessage(msg) {
       context: msg.context
     });
     try {
-      const { text, model: usedModel } = await runCli(picked.cli, prompt, effectiveModel, msg.context, effectiveEffort);
+      const { text, model: usedModel } = await runCliAuthGated(picked.cli, prompt, effectiveModel, msg.context, effectiveEffort);
       const parsed = extractJsonArray(text);
       const srcById = new Map(segments.map((x) => [String(x.id), x.text]));
       const result = parsed
