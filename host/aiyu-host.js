@@ -496,6 +496,11 @@ function runCli(cli, prompt, model, context, effort) {
           reject(new Error(`${cli} 需要登入：請在終端機執行 ${cli} 完成登入後重試`));
           return;
         }
+        if (isModelError(diag)) {
+          // 關鍵字「型號無效」：同一型號重試只會拿到同一個錯 → 擴充據此中止整輪、顯示原因。
+          reject(new Error(`${cli} 型號無效：不接受「${model || "預設"}」，請改選其他型號或稍後重試`));
+          return;
+        }
         if (isQuotaError(diag)) {
           // 額度用盡：給乾淨、可辨識的訊息（關鍵字「額度用盡」），讓前端在影片
           // 右上角顯示專屬狀態。否則 stderr.slice(0,200) 會把 usage-limit 字樣切掉。
@@ -535,6 +540,12 @@ function isLoginError(s) {
   return /authentication required|not logged in|please run \/login/i.test(s || "");
 }
 
+// agy「invalid model selection」、claude「There's an issue with the selected model」、
+// codex「The model `x` does not exist or you do not have access to it」
+function isModelError(s) {
+  return /invalid model selection|issue with the selected model|model `[^`]*` does not exist/i.test(s || "");
+}
+
 // agy 未登入時，每個程序都自己開一個 Google 登入視窗、約 60 秒後才失敗；擴充又並行送多組字幕。
 // → 登入未確認前一次只跑一個 agy，其餘等它的結果：成功就放行並行，「需要登入」就一起帶回同一個錯誤。
 let agyLoggedIn = false;
@@ -551,7 +562,7 @@ function runCliAuthGated(cli, ...rest) {
     return agyProbe.then(
       () => runCliAuthGated(cli, ...rest),
       (e) => {
-        if (e.message.includes("需要登入")) throw e;
+        if (e.message.includes("需要登入") || e.message.includes("型號無效")) throw e;
         return runCliAuthGated(cli, ...rest);
       }
     );

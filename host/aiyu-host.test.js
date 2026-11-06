@@ -11,11 +11,14 @@ import { fileURLToPath } from "node:url";
 
 const HOST = path.join(path.dirname(fileURLToPath(import.meta.url)), "aiyu-host.js");
 
-function fakeAgy(dir, { loggedIn }) {
+const AGY_ENDINGS = {
+  ok: `echo '[{"id":"1","zh":"你好"}]'`,
+  loggedOut: `echo "Authentication required. Please visit the URL to log in:" >&2; exit 1`,
+  badModel: `echo 'error: invalid model selection (--model "claude-sonnet-5-5-low" --effort ""): model claude-sonnet-5-5-low is not recognized as a known model or custom model in settings' >&2; exit 1`
+};
+
+function fakeAgy(dir, { loggedIn, ending = loggedIn ? AGY_ENDINGS.ok : AGY_ENDINGS.loggedOut }) {
   const bin = path.join(dir, "agy");
-  const ending = loggedIn
-    ? `echo '[{"id":"1","zh":"你好"}]'`
-    : `echo "Authentication required. Please visit the URL to log in:" >&2; exit 1`;
   fs.writeFileSync(bin, `#!/bin/sh
 echo x >> "${dir}/spawns"
 touch "${dir}/run.$$"
@@ -75,3 +78,23 @@ test("agy logged in: once the first call succeeds the rest run in parallel", asy
   assert.equal(lines(path.join(dir, "spawns")).length, 4);
   assert.ok(peak(dir) >= 2, `expected parallel agy after login confirmed, peak=${peak(dir)}`);
 });
+
+// 型號被拒是決定性錯誤：重試同一型號只會再等 7 秒拿到同一個錯 → 帶固定關鍵字「型號無效」讓擴充中止整輪。
+test("agy rejects the model: concurrent requests spawn one agy and all get the invalid-model error", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aiyu-agy-model-"));
+  const replies = await translateConcurrently(fakeAgy(dir, { ending: AGY_ENDINGS.badModel }), dir, 4);
+  assert.equal(lines(path.join(dir, "spawns")).length, 1, "the same rejected model must not be retried per request");
+  for (const r of replies) assert.match(r.error, /agy 型號無效/);
+});
+
+// claude、codex 的型號錯誤字串（實測 CLI 輸出）也要被辨識；分類不看是哪個 CLI，借假 agy 送出即可。
+for (const [name, msg] of [
+  ["claude", "There's an issue with the selected model (bogus-model-xyz). It may not exist or you may not have access to it. Run --model to pick a different model."],
+  ["codex", "ERROR: The model `bogus-model-xyz` does not exist or you do not have access to it."]
+]) {
+  test(`${name}'s model-rejection wording is classified as invalid model`, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aiyu-model-wording-"));
+    const [r] = await translateConcurrently(fakeAgy(dir, { ending: `echo ${JSON.stringify(msg).replace(/`/g, "\\`")} >&2; exit 1` }), dir, 1);
+    assert.match(r.error, /型號無效/);
+  });
+}

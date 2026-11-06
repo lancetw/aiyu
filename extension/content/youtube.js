@@ -1259,11 +1259,11 @@
     const scheduler = aiyuCreateScheduler(groupObjs, { retryCap: RETRY_CAP });
     const total = todoIdx.length;
     let firstError = "";
-    // 額度用盡／CLI 未登入 → 立刻中止整輪：再敲只會撞同一面牆（未登入的 agy 每次呼叫都開一個登入視窗）。
+    // 額度用盡／CLI 未登入／型號無效 → 立刻中止整輪：再敲只會撞同一面牆（未登入的 agy 每次呼叫都開一個登入視窗）。
     let haltBadge = "";
     const noteHalt = (err) => {
       if (err.includes("額度用盡")) haltBadge = "⚠ 翻譯額度用盡，請稍後再試";
-      else if (err.includes("需要登入")) haltBadge = `⚠ ${err}`;
+      else if (err.includes("需要登入") || err.includes("型號無效")) haltBadge = `⚠ ${err}`;
     };
     progressPct = 0;
     // 已拿到「真譯文」的句數（exhausted 回退原文是收尾時才設，迴圈中 zh!==null ⟺ 真譯文）
@@ -1322,7 +1322,7 @@
           return;
         }
         const { ok } = await translateGroup(groupObjs[gi].idxs);
-        if (haltBadge) return; // 額度用盡／未登入 → 立刻收工
+        if (haltBadge) return; // 額度用盡／未登入／型號無效 → 立刻收工
         scheduler.record(gi, ok);
         if (!active || runSeq !== myRun) return;
         curIdx = -1; // 可能剛翻好 → 立刻重畫目前字幕
@@ -1349,7 +1349,7 @@
     if (firstError) console.warn("[aiyu] 翻譯結束有錯誤，firstError =", JSON.stringify(firstError));
 
     if (haltBadge) {
-      // 額度用盡／未登入：右上角持續顯示、不自動淡出。未譯 cue 維持 null（不回退原文鎖死成英文），
+      // 額度用盡／未登入／型號無效：右上角持續顯示、不自動淡出。未譯 cue 維持 null（不回退原文鎖死成英文），
       // 恢復後可用選單「重新翻譯」或下次啟動補回。
       unresolvedCues = todoIdx.filter((i) => cuesRef[i].zh === null);
       setBadge(haltBadge, "error");
