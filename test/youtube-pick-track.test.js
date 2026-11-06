@@ -22,7 +22,7 @@ function t(name, fn) {
   console.log("  ✓ " + name);
 }
 
-const pr = (tracks) => ({ captions: { playerCaptionsTracklistRenderer: { captionTracks: tracks } } });
+const pr = (tracks, extra) => ({ captions: { playerCaptionsTracklistRenderer: { captionTracks: tracks, ...extra } } });
 
 console.log("pickTrack:");
 
@@ -52,6 +52,22 @@ t("人工字幕是別的語言 → 不可誤選，退回 ASR", () => {
 
 t("ASR 是中文 → 無需翻譯", () => {
   const r = pickTrack(pr([{ languageCode: "zh-TW", kind: "asr" }, { languageCode: "en" }]));
+  assert.strictEqual(r.track, null);
+  assert.strictEqual(r.allChinese, true);
+});
+
+// 自動配音影片：每種 AI 配音各有一條 ASR，清單依語言名排序 → 第一條常是阿拉伯文。
+// 原始語言要看 YouTube 自己翻譯時用的來源軌（defaultTranslationSourceTrackIndices）。
+t("自動配音影片 → 選原始語言（en）的 ASR，不選清單第一條（ar）", () => {
+  const en = { languageCode: "en", kind: "asr" };
+  const tracks = [{ languageCode: "ar", kind: "asr" }, { languageCode: "bn", kind: "asr" }, { languageCode: "nl-NL", kind: "asr" }, en];
+  const r = pickTrack(pr(tracks, { defaultTranslationSourceTrackIndices: [3] }));
+  assert.strictEqual(r.track, en);
+});
+
+t("自動配音的中文影片 → 仍判定為無需翻譯", () => {
+  const tracks = [{ languageCode: "ar", kind: "asr" }, { languageCode: "en", kind: "asr" }, { languageCode: "zh-TW", kind: "asr" }];
+  const r = pickTrack(pr(tracks, { defaultTranslationSourceTrackIndices: [2] }));
   assert.strictEqual(r.track, null);
   assert.strictEqual(r.allChinese, true);
 });

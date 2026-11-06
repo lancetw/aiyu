@@ -1097,13 +1097,17 @@
   // 重點：要翻的是影片「口說的那個語言」，不是清單裡第一條非中文字幕 —
   // 多語影片（如 TED）字幕清單常有數十種語言，盲挑第一條會選到阿拉伯文之類。
   // ASR（自動字幕）是從聲音生成的，其 languageCode 即影片口說語言 → 用它定位原文。
+  // 自動配音影片每種 AI 配音各有一條 ASR（清單第一條常是阿拉伯文）→ 優先採 YouTube 自己翻譯時
+  // 用的來源軌（defaultTranslationSourceTrackIndices）判定原始語言。
   function pickTrack(pr) {
-    const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    const renderer = pr?.captions?.playerCaptionsTracklistRenderer;
+    const tracks = renderer?.captionTracks;
     if (!Array.isArray(tracks) || !tracks.length) return { track: null, allChinese: false };
 
     const langOf = (t) => (t.languageCode || "").toLowerCase();
-    const asr = tracks.find((t) => t.kind === "asr");
-    const origLang = asr ? langOf(asr) : "";
+    const source = tracks[renderer.defaultTranslationSourceTrackIndices?.[0]];
+    const asr = (source?.kind === "asr" && source) || tracks.find((t) => t.kind === "asr");
+    const origLang = source ? langOf(source) : asr ? langOf(asr) : "";
 
     // 影片本來就是中文 → 不需翻譯
     if (origLang && /^zh/.test(origLang)) return { track: null, allChinese: true };
